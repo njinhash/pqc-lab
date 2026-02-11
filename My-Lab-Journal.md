@@ -977,13 +977,10 @@ Code Signing Certificate (Future)
 🚀 **Ready to create code signing certificates**  
 🚀 **Foundation for production PQC deployment complete**
 
----
-ls -lh My-Lab-Journal.md
 
 ---
 
 ## **Module 4 Part 2: User Authentication Certificate**
-**Date:** February 11, 2026  
 **Project:** Creating quantum-resistant client authentication certificate for user/client authentication  
 **Technology:** OpenSSL 3.5.3, ML-DSA-87 algorithm, clientAuth extensions
 
@@ -992,14 +989,374 @@ Create and sign a user authentication certificate with `clientAuth` extensions f
 
 ## **Step-by-Step Implementation**
 
-
 ### **Step 1: Navigate to Module 4 Directory**
-**Purpose:** Set correct working directory for user authentication certificate creation
+**Purpose:** Set correct working directory for user authentication certificate creation  
 ```bash
 cd /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/04_end_entity_certificates/
 pwd
 ```
-
 **Result:** Working directory: `/home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/04_end_entity_certificates`
 
 ### **Step 2: Verify User Auth Directory Structure**
+**Purpose:** Confirm the pre-created directory structure exists  
+```bash
+ls -la user_auth/
+```
+**Result:** ✅ Directory structure already exists with `certs/`, `csr/`, `private/` subdirectories
+
+### **Step 3: Create User Authentication Configuration File**
+**Purpose:** Define certificate attributes specific to client authentication (different from server certificate)  
+```bash
+cd user_auth/
+cat > user_auth.cnf << 'EOF'
+# User Authentication Certificate Configuration
+# For clientAuth (user authentication, VPN, mutual TLS)
+
+[req]
+default_bits = 2048
+prompt = no
+default_md = sha384
+distinguished_name = dn
+req_extensions = req_ext
+
+[dn]
+C = US
+ST = California
+L = San Francisco
+O = PQCLab Security
+OU = Authentication Department
+CN = pqc-user@example.com
+emailAddress = pqc-user@example.com
+
+[req_ext]
+keyUsage = critical, digitalSignature, keyAgreement
+extendedKeyUsage = clientAuth, emailProtection
+subjectAltName = email:pqc-user@example.com
+basicConstraints = critical, CA:FALSE
+EOF
+cat user_auth.cnf
+```
+**Result:** ✅ Created configuration with client-specific settings:
+- CN as email address: `pqc-user@example.com`
+- Key Usage: `digitalSignature, keyAgreement`
+- Extended Key Usage: `clientAuth, emailProtection`
+
+### **Step 4: Generate ML-DSA-87 Private Key**
+**Purpose:** Create quantum-resistant private key for user authentication  
+```bash
+openssl genpkey -algorithm ML-DSA-87 -out private/user_auth.key
+ls -la private/
+```
+**Result:** ✅ Generated 6.7KB ML-DSA-87 private key with secure permissions (`-rw-------`)
+
+### **Step 5: Generate Certificate Signing Request (CSR)**
+**Purpose:** Create CSR for Intermediate CA to sign  
+```bash
+openssl req -new -key private/user_auth.key -out csr/user_auth.csr -config user_auth.cnf
+ls -la csr/
+```
+**Result:** ✅ Generated 10KB CSR file with clientAuth extensions
+
+### **Step 6: Navigate to Intermediate CA Directory**
+**Purpose:** Need to be in Intermediate CA directory for signing due to relative paths in config  
+```bash
+cd ../03_fips_quantum_ca_intermediate/intermediate/
+pwd
+```
+**Result:** Working directory: `/home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/03_fips_quantum_ca_intermediate/intermediate`
+
+### **Step 7: Create Custom Extensions File**
+**Purpose:** Intermediate CA config lacked `user_cert` section, needed custom extensions file  
+```bash
+cd ../../04_end_entity_certificates/user_auth/
+cat > user_auth_extensions.cnf << 'EOF'
+# Extensions for User Authentication Certificate
+basicConstraints = CA:FALSE
+keyUsage = critical, digitalSignature, keyAgreement
+extendedKeyUsage = clientAuth, emailProtection
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid,issuer
+EOF
+cat user_auth_extensions.cnf
+```
+**Result:** ✅ Created custom extensions file to override Intermediate CA's missing user_cert section
+
+### **Step 8: Sign the User Authentication Certificate**
+**Purpose:** Have Intermediate CA sign the CSR with 90-day validity (standard for user certificates)  
+```bash
+cd ../03_fips_quantum_ca_intermediate/intermediate/
+openssl ca -config openssl.cnf \
+  -extfile ../../04_end_entity_certificates/user_auth/user_auth_extensions.cnf \
+  -days 90 \
+  -notext \
+  -md sha384 \
+  -in ../../04_end_entity_certificates/user_auth/csr/user_auth.csr \
+  -out ../../04_end_entity_certificates/user_auth/certs/user_auth.crt
+# Prompts: y (Sign), y (Commit)
+```
+**Result:** ✅ Certificate successfully signed with 90-day validity
+
+### **Step 9: Verify the Signed Certificate**
+**Purpose:** Validate certificate details and ensure correct extensions were applied  
+```bash
+cd ../../04_end_entity_certificates/user_auth/
+openssl x509 -in certs/user_auth.crt -text -noout | head -40
+openssl x509 -in certs/user_auth.crt -text -noout | grep -A 10 "X509v3 extensions"
+```
+**Result:** ✅ Certificate verified with:
+- Algorithm: ML-DSA-87
+- Subject: `pqc-user@example.com`
+- Validity: 90 days (Feb 11 to May 12, 2026)
+- Extensions: Basic Constraints (CA:FALSE), Key Usage (Digital Signature, Key Agreement), Extended Key Usage (TLS Web Client Authentication, E-mail Protection)
+
+### **Step 10: Verify Certificate Chain**
+**Purpose:** Ensure certificate is properly chained to Intermediate and Root CAs  
+```bash
+openssl verify -CAfile ../../03_fips_quantum_ca_intermediate/intermediate/certs/ca-chain.crt certs/user_auth.crt
+```
+**Result:** ✅ `certs/user_auth.crt: OK` - Complete chain validation successful
+
+## **Final File Structure Created**
+```
+04_end_entity_certificates/user_auth/
+├── certs/user_auth.crt              # ✅ Signed certificate (10KB)
+├── csr/user_auth.csr                # ✅ Certificate Signing Request (10KB)
+├── private/user_auth.key            # ✅ ML-DSA-87 private key (6.7KB)
+├── user_auth.cnf                    # ✅ Configuration file (564B)
+└── user_auth_extensions.cnf         # ✅ Custom extensions file (242B)
+```
+
+## **Certificate Chain Architecture**
+```
+Root CA (ML-DSA-87, 10 years, offline)
+    ↓
+Intermediate CA (ML-DSA-87, 5 years, online)  
+    ↓
+User Authentication Certificate (ML-DSA-87, 90 days, clientAuth) ✅ COMPLETE
+```
+
+## **Key Technical Specifications**
+- **Certificate Type:** TLS Web Client Authentication & E-mail Protection
+- **Validity Period:** 90 days (standard for user certificates)
+- **Key Usage:** `digitalSignature, keyAgreement` (critical)
+- **Extended Key Usage:** `clientAuth, emailProtection`
+- **Subject:** Email address (`pqc-user@example.com`)
+- **Subject Alternative Name:** Email format for user identification
+
+## **Challenges Overcome**
+1. **Missing Extension Section:** Intermediate CA config didn't have `user_cert` section - resolved by creating custom extensions file
+2. **Path Navigation Complexity:** Multiple directory changes needed due to relative paths in OpenSSL config files
+3. **Extension Specificity:** User certificates require different extensions (`clientAuth`, `emailProtection`) vs server certificates (`serverAuth`)
+
+## **Key Learnings**
+1. **User vs Server Certificates:** User certificates use `clientAuth` extensions and often have email addresses as subjects
+2. **Validity Differences:** User certificates typically have shorter validity (90-180 days) vs server certificates (1-2 years)
+3. **Extension Flexibility:** When CA config lacks specific extension sections, custom extensions files can override
+4. **Path Dependencies:** OpenSSL `ca` command requires execution from CA directory due to relative path configurations
+5. **Client Authentication Use Cases:** `clientAuth` enables mutual TLS, VPN authentication, and secure user identification
+
+## **Module 4 Part 2 Completion Status**
+✅ **User authentication certificate created and signed**  
+✅ **Custom extensions file created for clientAuth requirements**  
+✅ **90-day validity period applied (standard for user certs)**  
+✅ **Certificate chain validation successful**  
+✅ **Complete quantum-resistant client authentication solution**  
+🚀 **Ready to create code signing certificates**  
+🚀 **All end-entity certificate types will be completed**  
+🚀 **Production-ready PQC certificate hierarchy established**
+
+Based on our recent work, I need to update **My-Lab-Journal.md** with **Module 4 Part 3: Code Signing Certificate**.
+
+Here's the new section to add:
+
+---
+
+## **Module 4 Part 3: Code Signing Certificate**
+**Project:** Creating quantum-resistant code signing certificate for software/firmware signing  
+**Technology:** OpenSSL 3.5.3, ML-DSA-87 algorithm, codeSigning extensions
+
+## **Objective**
+Create and sign a code signing certificate with `codeSigning` extensions for digitally signing software, scripts, and firmware updates, establishing quantum-resistant integrity verification for software distribution.
+
+## **Step-by-Step Implementation**
+
+### **Step 1: Navigate to Module 4 Code Signing Directory**
+**Purpose:** Set correct working directory for code signing certificate creation  
+```bash
+cd /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/04_end_entity_certificates/code_signing/
+pwd
+```
+**Result:** Working directory: `/home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/04_end_entity_certificates/code_signing`
+
+### **Step 2: Create Code Signing Configuration File**
+**Purpose:** Define certificate attributes specific to code signing (different from server/client certificates)  
+```bash
+cat > code_signing.cnf << 'EOF'
+[req]
+default_bits = 2048
+prompt = no
+default_md = sha256
+distinguished_name = dn
+req_extensions = req_ext
+
+[dn]
+C = US
+ST = California
+O = PQCLab Security
+OU = Software Development Department
+CN = pqc-code-signer@example.com
+emailAddress = pqc-code-signer@example.com
+
+[req_ext]
+keyUsage = digitalSignature
+extendedKeyUsage = codeSigning
+basicConstraints = CA:FALSE
+EOF
+ls -la code_signing.cnf
+```
+**Result:** ✅ Created configuration with code-specific settings (367 bytes):
+- Subject: Software Development Department
+- Key Usage: Only `digitalSignature` (no keyEncipherment or keyAgreement)
+- Extended Key Usage: `codeSigning`
+
+### **Step 3: Create Extensions Configuration File**
+**Purpose:** Create separate extensions file for Intermediate CA signing process  
+```bash
+cat > code_signing_extensions.cnf << 'EOF'
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid:always,issuer
+keyUsage = digitalSignature
+extendedKeyUsage = codeSigning
+basicConstraints = CA:FALSE
+EOF
+ls -la code_signing_extensions.cnf
+```
+**Result:** ✅ Created extensions file (160 bytes) with:
+- Proper chain identifiers (subjectKeyIdentifier, authorityKeyIdentifier)
+- Code signing-specific key usage
+- `codeSigning` extended key usage
+
+### **Step 4: Generate ML-DSA-87 Private Key**
+**Purpose:** Create quantum-resistant private key for code signing operations  
+```bash
+openssl genpkey -algorithm ML-DSA-87 -out private/code_signing.key
+ls -la private/
+```
+**Result:** ✅ Generated 6.7KB ML-DSA-87 private key with secure permissions (`-rw-------`)
+
+### **Step 5: Generate Certificate Signing Request (CSR)**
+**Purpose:** Create CSR for Intermediate CA to sign  
+```bash
+openssl req -new \
+  -key private/code_signing.key \
+  -out csr/code_signing.csr \
+  -config code_signing.cnf
+ls -la csr/
+openssl req -in csr/code_signing.csr -noout -text | head -20
+```
+**Result:** ✅ Generated 10KB CSR file with:
+- Subject: `pqc-code-signer@example.com`, `Software Development Department`
+- Public Key Algorithm: ML-DSA-87
+- Requested extensions: `codeSigning`, `digitalSignature`
+
+### **Step 6: Sign the Code Signing Certificate**
+**Purpose:** Have Intermediate CA sign the CSR with 1-year validity (standard for code signing)  
+```bash
+cd /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/03_fips_quantum_ca_intermediate/intermediate/
+openssl ca -config openssl.cnf \
+  -extfile /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/04_end_entity_certificates/code_signing/code_signing_extensions.cnf \
+  -days 365 \
+  -notext \
+  -md sha256 \
+  -in /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/04_end_entity_certificates/code_signing/csr/code_signing.csr \
+  -out /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/04_end_entity_certificates/code_signing/certs/code_signing.crt
+# Prompts: y (Sign), y (Commit)
+```
+**Result:** ✅ Certificate successfully signed with 1-year validity
+
+### **Step 7: Verify Certificate Details**
+**Purpose:** Validate certificate and ensure correct code signing extensions were applied  
+```bash
+cd /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/04_end_entity_certificates/code_signing/
+openssl x509 -in certs/code_signing.crt -noout -subject -dates -purpose
+openssl x509 -in certs/code_signing.crt -noout -ext extendedKeyUsage
+```
+**Result:** ✅ Certificate verified with:
+- Subject: `OU=Software Development Department, CN=pqc-code-signer@example.com`
+- Validity: 1 year (Feb 11 2026 to Feb 11 2027)
+- Extended Key Usage: `Code Signing`
+
+### **Step 8: Verify Certificate Chain**
+**Purpose:** Ensure certificate is properly chained to Intermediate and Root CAs  
+```bash
+openssl verify -CAfile ../../03_fips_quantum_ca_intermediate/intermediate/certs/ca-chain.crt certs/code_signing.crt
+```
+**Result:** ✅ `certs/code_signing.crt: OK` - Complete chain validation successful
+
+### **Step 9: Create Certificate Chain File**
+**Purpose:** Create combined chain file for easy deployment and validation  
+```bash
+cat certs/code_signing.crt ../../03_fips_quantum_ca_intermediate/intermediate/certs/ca-chain.crt > certs/code_signing-chain.crt
+ls -la certs/
+openssl crl2pkcs7 -nocrl -certfile certs/code_signing-chain.crt | openssl pkcs7 -print_certs -noout | grep "subject=" | wc -l
+```
+**Result:** ✅ Created 31KB chain file containing all 3 certificates:
+1. Code Signing Certificate (end entity)
+2. Intermediate CA Certificate
+3. Root CA Certificate
+
+## **Final File Structure Created**
+```
+04_end_entity_certificates/code_signing/
+├── certs/
+│   ├── code_signing.crt              # ✅ Signed certificate (10KB)
+│   └── code_signing-chain.crt        # ✅ Complete chain (31KB)
+├── csr/
+│   └── code_signing.csr              # ✅ Certificate Signing Request (10KB)
+├── private/
+│   └── code_signing.key              # ✅ ML-DSA-87 private key (6.7KB)
+├── code_signing.cnf                  # ✅ Configuration file (367B)
+└── code_signing_extensions.cnf       # ✅ Custom extensions file (160B)
+```
+
+## **Certificate Chain Architecture**
+```
+Root CA (ML-DSA-87, 10 years, offline)
+    ↓
+Intermediate CA (ML-DSA-87, 5 years, online)  
+    ↓
+Code Signing Certificate (ML-DSA-87, 1 year, codeSigning) ✅ COMPLETE
+```
+
+## **Key Technical Specifications**
+- **Certificate Type:** Code Signing for software/firmware integrity
+- **Validity Period:** 1 year (standard for code signing certificates)
+- **Key Usage:** `digitalSignature` only (no encryption or key agreement)
+- **Extended Key Usage:** `codeSigning`
+- **Subject:** Software Development Department, code signer email
+- **Basic Constraints:** `CA:FALSE` (end-entity certificate)
+
+## **Challenges Overcome**
+1. **Extension Specificity:** Code signing requires different extensions (`codeSigning`) vs serverAuth/clientAuth
+2. **Limited Key Usage:** Only `digitalSignature` allowed (no keyEncipherment or keyAgreement)
+3. **Department Organization:** Created `Software Development Department` OU to reflect real-world organizational structure
+4. **ML-DSA-87 Performance:** Key generation and signing operations remain slower than classical algorithms
+
+## **Key Learnings**
+1. **Code Signing Specifics:** Code signing certificates have unique requirements with limited key usage
+2. **Organizational Structure:** Different departments (Software Development, Authentication) help categorize certificate purposes
+3. **Extension Files:** Creating separate extensions files provides flexibility when CA configs lack specific sections
+4. **One-Year Validity:** Code signing certificates typically have 1-3 year validity depending on organizational policy
+5. **Digital Signature Only:** Code signing only requires `digitalSignature` key usage, unlike server certificates
+
+## **Module 4 Part 3 Completion Status**
+✅ **Code signing certificate created and signed with ML-DSA-87**  
+✅ **Proper extensions applied (codeSigning, digitalSignature)**  
+✅ **One-year validity period applied (standard for code signing)**  
+✅ **Complete certificate chain validated and created**  
+✅ **All three end-entity certificate types now complete**  
+🚀 **Module 4 fully completed: Web Server, User Auth, and Code Signing certificates**  
+🚀 **Complete quantum-resistant PKI hierarchy established**  
+🚀 **Ready for production deployment or Module 5**  
+
+---
