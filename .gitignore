@@ -1,0 +1,34 @@
+# PRIVATE KEYS - NEVER PUSH THESE TO GITHUB!
+*.key
+*.pem
+*.pfx
+*.p12
+*.jks
+
+# SENSITIVE CONFIGURATION FILES
+*-config.cnf
+*.env
+secrets*.txt
+passwords.txt
+
+# CERTIFICATE AUTHORITY DATABASE FILES
+index.txt*
+serial*
+crlnumber*
+
+# DIRECTORY STRUCTURES TO EXCLUDE
+**/private/
+**/newcerts/
+**/crl/
+
+# SYSTEM/EDITOR FILES
+.DS_Store
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# DOCKER/TEMP FILES
+*.log
+tmp/
+temp/
