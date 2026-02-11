@@ -979,3 +979,27 @@ Code Signing Certificate (Future)
 
 ---
 ls -lh My-Lab-Journal.md
+
+---
+
+## **Module 4 Part 2: User Authentication Certificate**
+**Date:** February 11, 2026  
+**Project:** Creating quantum-resistant client authentication certificate for user/client authentication  
+**Technology:** OpenSSL 3.5.3, ML-DSA-87 algorithm, clientAuth extensions
+
+## **Objective**
+Create and sign a user authentication certificate with `clientAuth` extensions for TLS mutual authentication, VPN access, and email signing, establishing quantum-resistant identity verification.
+
+## **Step-by-Step Implementation**
+
+
+### **Step 1: Navigate to Module 4 Directory**
+**Purpose:** Set correct working directory for user authentication certificate creation
+```bash
+cd /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/04_end_entity_certificates/
+pwd
+```
+
+**Result:** Working directory: `/home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/04_end_entity_certificates`
+
+### **Step 2: Verify User Auth Directory Structure**
