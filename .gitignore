@@ -1,12 +1,35 @@
-docs/_build/*
-media/
+# OpenSSL temporary and backup files
+*.old
+*.attr
+
+# Certificate Authority auto-generated directories
+newcerts/
+crl/
+
+# Private keys (CRITICAL - never commit these!)
+*.key
+*.p12
+*.pfx
+
+# Certificate files (optional - usually we commit .crt files)
+# *.crt
+# *.pem
+
+# System files
 .DS_Store
-.idea*
-pdf/*
-.vscode
-*.sublime-*
-.terraform*
-terraform.tfstate*
-*.rpm
+Thumbs.db
+desktop.ini
+
+# IDE and editor files
+.vscode/
+.idea/
 *.swp
-.virtualenv
+*.swo
+
+# Log files
+*.log
+
+# Temporary files
+*.tmp
+temp/
+tmp/
