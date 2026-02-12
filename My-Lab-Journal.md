@@ -1724,3 +1724,271 @@ Vault Server Certificate (ML-DSA-87, 2 years, serverAuth, "Security Infrastructu
 - Ready for Module 4 Part 5: Certificate Export Formats (PEM, DER, PKCS#12)
  
 ---
+## **Module 4 Part 5: Certificate Export Formats**
+**Date:** February 12, 2026
+**Project:** Converting all four quantum-resistant end-entity certificates to multiple standard formats for cross-platform compatibility
+**Technology:** OpenSSL 3.5.3, ML-DSA-87 algorithm, PEM, DER, PKCS#12, PKCS#7 formats
+
+---
+
+## **Objective**
+Export all four certificate types (Web Server, User Authentication, Code Signing, and Vault Server) from their native PEM format to DER (binary), PKCS#12 (certificate + private key bundle), and PKCS#7 (certificate chain) formats to ensure compatibility with Windows servers, HSMs, code signing tools, Java keystores, and other enterprise platforms requiring specific certificate formats.
+
+---
+
+## **Step-by-Step Implementation**
+
+### **Part A: Web Server Certificate Exports**
+
+#### **Step 1: Navigate to Web Server Certificate Directory**
+**Purpose:** Set correct working directory for web server certificate export operations
+```bash
+cd /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/04_end_entity_certificates/web_server/
+```
+**Result:** Working directory confirmed
+
+#### **Step 2: Export Web Server Certificate to DER Format**
+**Purpose:** Convert PEM certificate to binary DER format for Windows, Java, and embedded systems
+```bash
+openssl x509 -in certs/web_server.crt -outform DER -out certs/web_server.der
+```
+**Result:** Created `certs/web_server.der` (7,700 bytes)
+
+#### **Step 3: Export Web Server Certificate to PKCS#12 Format**
+**Purpose:** Create password-protected bundle with certificate and private key for IIS and Windows Certificate Store
+```bash
+openssl pkcs12 -export -in certs/web_server.crt -inkey private/web_server.key -out certs/web_server.p12 -name "Web Server Certificate - ML-DSA-87" -passout pass:pqclab123
+```
+**Result:** Created `certs/web_server.p12` (13,384 bytes, permissions 600)
+
+#### **Step 4: Export Web Server Certificate to PKCS#7 Single Format**
+**Purpose:** Create PKCS#7 container with certificate only for Windows chain import
+```bash
+openssl crl2pkcs7 -nocrl -certfile certs/web_server.crt -out certs/web_server.p7b
+```
+**Result:** Created `certs/web_server.p7b` (10,536 bytes)
+
+#### **Step 5: Export Web Server Certificate Chain to PKCS#7 Format**
+**Purpose:** Create PKCS#7 container with full certificate chain (web server + Intermediate CA)
+```bash
+openssl crl2pkcs7 -nocrl -certfile certs/web_server.crt -certfile ../../03_fips_quantum_ca_intermediate/intermediate/certs/intermediate_ca.crt -out certs/web_server-chain.p7b
+```
+**Result:** Created `certs/web_server-chain.p7b` (20,968 bytes)
+
+---
+
+### **Part B: User Authentication Certificate Exports**
+
+#### **Step 1: Navigate to User Authentication Certificate Directory**
+**Purpose:** Set correct working directory for user certificate export operations
+```bash
+cd /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/04_end_entity_certificates/user_auth/
+```
+**Result:** Working directory confirmed
+
+#### **Step 2: Export User Authentication Certificate to DER Format**
+**Purpose:** Convert PEM certificate to binary DER format for smart cards and mobile devices
+```bash
+openssl x509 -in certs/user_auth.crt -outform DER -out certs/user_auth.der
+```
+**Result:** Created `certs/user_auth.der` (7,761 bytes)
+
+#### **Step 3: Export User Authentication Certificate to PKCS#12 Format**
+**Purpose:** Create password-protected bundle for browser import, VPN clients, and email signing
+```bash
+openssl pkcs12 -export -in certs/user_auth.crt -inkey private/user_auth.key -out certs/user_auth.p12 -name "User Authentication Certificate - ML-DSA-87" -passout pass:pqclab123
+```
+**Result:** Created `certs/user_auth.p12` (13,483 bytes, permissions 600)
+
+#### **Step 4: Export User Authentication Certificate to PKCS#7 Single Format**
+**Purpose:** Create PKCS#7 container with certificate only for distribution
+```bash
+openssl crl2pkcs7 -nocrl -certfile certs/user_auth.crt -out certs/user_auth.p7b
+```
+**Result:** Created `certs/user_auth.p7b` (10,617 bytes)
+
+#### **Step 5: Export User Authentication Certificate Chain to PKCS#7 Format**
+**Purpose:** Create PKCS#7 container with full certificate chain (user cert + Intermediate CA)
+```bash
+openssl crl2pkcs7 -nocrl -certfile certs/user_auth.crt -certfile ../../03_fips_quantum_ca_intermediate/intermediate/certs/intermediate_ca.crt -out certs/user_auth-chain.p7b
+```
+**Result:** Created `certs/user_auth-chain.p7b` (21,054 bytes)
+
+---
+
+### **Part C: Code Signing Certificate Exports**
+
+#### **Step 1: Navigate to Code Signing Certificate Directory**
+**Purpose:** Set correct working directory for code signing certificate export operations
+```bash
+cd /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/04_end_entity_certificates/code_signing/
+```
+**Result:** Working directory confirmed
+
+#### **Step 2: Export Code Signing Certificate to DER Format**
+**Purpose:** Convert PEM certificate to binary DER format for Windows Authenticode and Java JAR signing
+```bash
+openssl x509 -in certs/code_signing.crt -outform DER -out certs/code_signing.der
+```
+**Result:** Created `certs/code_signing.der` (7,768 bytes)
+
+#### **Step 3: Export Code Signing Certificate to PKCS#12 Format**
+**Purpose:** Create password-protected bundle for signtool.exe, macOS codesign, and CI/CD pipelines
+```bash
+openssl pkcs12 -export -in certs/code_signing.crt -inkey private/code_signing.key -out certs/code_signing.p12 -name "Code Signing Certificate - ML-DSA-87" -passout pass:pqclab123
+```
+**Result:** Created `certs/code_signing.p12` (13,452 bytes, permissions 600)
+
+#### **Step 4: Export Code Signing Certificate to PKCS#7 Single Format**
+**Purpose:** Create PKCS#7 container with certificate only for distribution and trust stores
+```bash
+openssl crl2pkcs7 -nocrl -certfile certs/code_signing.crt -out certs/code_signing.p7b
+```
+**Result:** Created `certs/code_signing.p7b` (10,625 bytes)
+
+#### **Step 5: Export Code Signing Certificate Chain to PKCS#7 Format**
+**Purpose:** Create PKCS#7 container with full certificate chain (code signing cert + Intermediate CA)
+```bash
+openssl crl2pkcs7 -nocrl -certfile certs/code_signing.crt -certfile ../../03_fips_quantum_ca_intermediate/intermediate/certs/intermediate_ca.crt -out certs/code_signing-chain.p7b
+```
+**Result:** Created `certs/code_signing-chain.p7b` (21,062 bytes)
+
+---
+
+### **Part D: Vault Server Certificate Exports**
+
+#### **Step 1: Navigate to Vault Server Certificate Directory**
+**Purpose:** Set correct working directory for vault server certificate export operations
+```bash
+cd /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/04_end_entity_certificates/vault_server/
+```
+**Result:** Working directory confirmed
+
+#### **Step 2: Export Vault Server Certificate to DER Format**
+**Purpose:** Convert PEM certificate to binary DER format for HSM provisioning and Java keystores
+```bash
+openssl x509 -in certs/vault_server.crt -outform DER -out certs/vault_server.der
+```
+**Result:** Created `certs/vault_server.der` (7,857 bytes)
+
+#### **Step 3: Export Vault Server Certificate to PKCS#12 Format**
+**Purpose:** Create password-protected bundle for HSM loading, disaster recovery, and secure backup
+```bash
+openssl pkcs12 -export -in certs/vault_server.crt -inkey private/vault_server.key -out certs/vault_server.p12 -name "Vault Server Certificate - ML-DSA-87" -passout pass:pqclab123
+```
+**Result:** Created `certs/vault_server.p12` (13,548 bytes, permissions 600)
+
+#### **Step 4: Export Vault Server Certificate to PKCS#7 Single Format**
+**Purpose:** Create PKCS#7 container with certificate only for client trust configuration
+```bash
+openssl crl2pkcs7 -nocrl -certfile certs/vault_server.crt -out certs/vault_server.p7b
+```
+**Result:** Created `certs/vault_server.p7b` (10,747 bytes)
+
+#### **Step 5: Export Vault Server Certificate Chain to PKCS#7 Format**
+**Purpose:** Create PKCS#7 container with full certificate chain (vault cert + Intermediate CA)
+```bash
+openssl crl2pkcs7 -nocrl -certfile certs/vault_server.crt -certfile ../../03_fips_quantum_ca_intermediate/intermediate/certs/intermediate_ca.crt -out certs/vault_server-chain.p7b
+```
+**Result:** Created `certs/vault_server-chain.p7b` (21,184 bytes)
+
+---
+
+## **Final File Structure Created**
+
+```
+04_end_entity_certificates/
+├── web_server/certs/
+│   ├── web_server.crt           # PEM format (10,483 bytes)
+│   ├── web_server.der           # DER format (7,700 bytes)
+│   ├── web_server.p12           # PKCS#12 (13,384 bytes, 600 perms)
+│   ├── web_server.p7b           # PKCS#7 single (10,536 bytes)
+│   └── web_server-chain.p7b    # PKCS#7 chain (20,968 bytes)
+│
+├── user_auth/certs/
+│   ├── user_auth.crt           # PEM format (10,564 bytes)
+│   ├── user_auth.der           # DER format (7,761 bytes)
+│   ├── user_auth.p12           # PKCS#12 (13,483 bytes, 600 perms)
+│   ├── user_auth.p7b           # PKCS#7 single (10,617 bytes)
+│   └── user_auth-chain.p7b    # PKCS#7 chain (21,054 bytes)
+│
+├── code_signing/certs/
+│   ├── code_signing.crt        # PEM format (10,576 bytes)
+│   ├── code_signing.der        # DER format (7,768 bytes)
+│   ├── code_signing.p12        # PKCS#12 (13,452 bytes, 600 perms)
+│   ├── code_signing.p7b        # PKCS#7 single (10,625 bytes)
+│   └── code_signing-chain.p7b  # PKCS#7 chain (21,062 bytes)
+│
+└── vault_server/certs/
+    ├── vault_server.crt        # PEM format (10,694 bytes)
+    ├── vault_server.der        # DER format (7,857 bytes)
+    ├── vault_server.p12        # PKCS#12 (13,548 bytes, 600 perms)
+    ├── vault_server.p7b        # PKCS#7 single (10,747 bytes)
+    └── vault_server-chain.p7b  # PKCS#7 chain (21,184 bytes)
+```
+
+---
+
+## **Key Technical Specifications**
+
+| Format | Extension | Contains Private Key? | File Size (Avg) | Primary Use Case |
+|--------|----------|----------------------|-----------------|------------------|
+| **PEM** | `.crt` | No | 10.6 KB | Apache, Nginx, Linux, OpenSSL |
+| **DER** | `.der` | No | 7.8 KB | Windows, Java, HSMs, embedded systems |
+| **PKCS#12** | `.p12` | **Yes** (encrypted) | 13.5 KB | IIS, Windows Cert Store, browsers, code signing |
+| **PKCS#7** | `.p7b` | No | 10.6 KB | Certificate distribution, trust stores |
+| **PKCS#7 Chain** | `-chain.p7b` | No | 21.1 KB | Full trust chain deployment |
+
+- **PKCS#12 Password:** `pqclab123` (change for production environments)
+- **Private Key Protection:** All PKCS#12 files have `-rw-------` (600) permissions
+- **DER Size Reduction:** ~26% smaller than PEM (no base64 overhead)
+- **Chain File Size:** Approximately double the single certificate size
+
+---
+
+## **Challenges Overcome**
+
+- **Missing PKCS#7 Single Certificate Files:** Initially, `user_auth.p7b` and `code_signing.p7b` were not created during the export process. Resolved by explicitly generating them using the `crl2pkcs7` command with a single `-certfile` parameter.
+
+- **PKCS#7 Verification Command Syntax:** Initial `grep "Subject:"` did not capture output due to exact field name mismatch. Resolved by using `grep -E "subject="` to match OpenSSL's exact output format.
+
+- **Code Signing Chain File Omission:** The `code_signing-chain.p7b` file was accidentally skipped during the initial export run. Detected during final verification and corrected by running the chain export command.
+
+- **Consistent Password Management:** Maintained the same password (`pqclab123`) across all four certificate types for lab consistency, with clear documentation that production environments require unique, strong passwords.
+
+- **Permission Verification:** Confirmed all PKCS#12 files were automatically created with secure 600 permissions, validating OpenSSL's security defaults.
+
+---
+
+## **Practical Insights**
+
+- **DER vs PEM Size Efficiency:** DER format is approximately 26% smaller than PEM (7.8 KB vs 10.6 KB) because it removes base64 encoding (33% overhead) and header/footer lines. This matters for bandwidth-constrained environments, embedded systems, and HSM storage limits.
+
+- **PKCS#12 Encryption Strength:** OpenSSL 3.5.3 automatically uses strong encryption (AES-256-CBC, PBKDF2 with 2048 iterations, SHA-256 PRF) for PKCS#12 containers, replacing legacy RC2/3DES defaults. This provides quantum-appropriate encryption strength for ML-DSA-87 private keys.
+
+- **Chain File Order Significance:** The order of `-certfile` parameters matters. The end-entity certificate must be listed first, followed by the Intermediate CA. OpenSSL preserves this order in the output file, which is critical for proper chain validation.
+
+- **One Certificate, Five Formats:** A single X.509 certificate can be transformed into multiple container formats without modifying the underlying cryptographic material. All formats reference the same ML-DSA-87 public key and identity information.
+
+- **Verification Pattern:** The verification pattern `ls -la certs/ | grep -E "pattern" | sort` proved reliable for confirming all five export formats across all four certificate types, providing a consistent audit mechanism.
+
+- **Git Security Compliance:** All PKCS#12 files were verified to have 600 permissions and are correctly excluded from Git via `.gitignore` rules. This confirms proper security posture for private key material.
+
+---
+
+## **Module 4 Part 5 Completion Status**
+
+- [x] Web server certificate exported to all five formats (PEM, DER, PKCS#12, PKCS#7, PKCS#7-chain)
+- [x] User authentication certificate exported to all five formats
+- [x] Code signing certificate exported to all five formats
+- [x] Vault server certificate exported to all five formats
+- [x] All PKCS#12 files verified with correct 600 permissions
+- [x] All PKCS#12 passwords tested and confirmed working
+- [x] All DER files verified and confirmed readable
+- [x] All PKCS#7 single certificate files verified
+- [x] All PKCS#7 chain files verified to contain exactly 2 certificates
+- [x] Complete documentation added to lab journal
+- [>] Ready for Module 5: Certificate Revocation Lists (CRLs)
+
+---
+
