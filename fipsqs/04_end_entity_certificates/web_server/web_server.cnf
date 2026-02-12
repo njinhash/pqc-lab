@@ -1,0 +1,25 @@
+[ req ]
+default_bits        = 2048
+default_keyfile     = web_server.key
+distinguished_name  = req_distinguished_name
+req_extensions      = req_ext
+prompt              = no
+
+[ req_distinguished_name ]
+countryName         = US
+stateOrProvinceName = California
+localityName        = San Francisco
+organizationName    = Quantum Secure Web Inc
+commonName          = www.quantumsecureweb.example.com
+emailAddress        = admin@quantumsecureweb.example.com
+
+[ req_ext ]
+subjectAltName      = @alt_names
+basicConstraints    = CA:FALSE
+keyUsage            = digitalSignature, keyEncipherment
+extendedKeyUsage    = serverAuth
+
+[ alt_names ]
+DNS.1               = www.quantumsecureweb.example.com
+DNS.2               = quantumsecureweb.example.com
+IP.1                = 192.168.1.100

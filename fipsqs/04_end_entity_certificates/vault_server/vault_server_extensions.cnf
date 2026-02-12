@@ -1,0 +1,13 @@
+# Extensions for Vault Server Certificate (High-Security Infrastructure)
+basicConstraints = CA:FALSE
+keyUsage = critical, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid,issuer
+subjectAltName = @alt_names
+
+[ alt_names ]
+DNS.1 = vault.pqclab.example.com
+DNS.2 = secrets.pqclab.example.com
+DNS.3 = hsm.pqclab.example.com
+IP.1 = 192.168.100.10

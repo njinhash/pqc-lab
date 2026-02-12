@@ -1,0 +1,6 @@
+# Extensions for User Authentication Certificate
+basicConstraints = CA:FALSE
+keyUsage = critical, digitalSignature, keyAgreement
+extendedKeyUsage = clientAuth, emailProtection
+subjectKeyIdentifier = hash
+authorityKeyIdentifier = keyid,issuer
