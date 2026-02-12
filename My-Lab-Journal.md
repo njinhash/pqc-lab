@@ -777,7 +777,7 @@ End-entity certificates (Future)
 3. **Extension Compatibility:** Used `v3_ca` instead of `v3_intermediate_ca` as Root CA only had that section
 4. **Database Integrity:** Ensured Root CA's `index.txt` properly recorded issued certificate
 
-## **Key Learnings**
+## **Practical Insights**
 
 ### **PKI Hierarchy Best Practices**
 - Two-tier hierarchy: Root (offline) + Intermediate (online) = Security + Flexibility
@@ -795,13 +795,15 @@ End-entity certificates (Future)
 - OpenSSL can validate the entire chain automatically
 
 ## **Module 3 Completion Status**
- **12 steps completed successfully** 
- **Intermediate CA created with ML-DSA-87** 
- **Certificate chain established with Root CA** 
- **All configuration and policy issues resolved** 
- **Ready for production certificate issuance** 
- **Prepared for Module 4: End-entity Certificate Issuance**
 
+- 12 steps completed successfully
+- Intermediate CA created with ML-DSA-87
+- Certificate chain established with Root CA
+- All configuration and policy issues resolved
+- Ready for production certificate issuance
+- Prepared for Module 4: End-entity Certificate Issuance
+
+I'll update your lab journal with the Module 4 work we just completed. Let me create the new section:
 
 ---
 
@@ -960,7 +962,7 @@ Code Signing Certificate (Future)
 2. **Extension Section Missing:** Intermediate CA config didn't have `server_cert` extension section; resolved by using extensions from CSR
 3. **Path Navigation:** Multiple `cd` commands needed to navigate between module directories for proper relative paths
 
-## **Key Learnings**
+## **Practical Insights**
 1. **End-entity vs CA Certificates:** End-entity certificates have `CA:FALSE` and specific key usages, unlike CAs which have `CA:TRUE`
 2. **Subject Alternative Names (SANs):** Modern certificates require SANs for multiple domain/IP coverage
 3. **Certificate Purpose Restrictions:** Different certificate types (serverAuth, clientAuth, codeSigning) have specific extension requirements
@@ -968,13 +970,14 @@ Code Signing Certificate (Future)
 5. **Chain Validation:** OpenSSL can validate entire certificate chain with single command using chain file
 
 ## **Module 4 Progress Status**
- **Web server certificate created and signed** 
- **Complete quantum-resistant certificate chain established** 
- **Certificate verification successful with openssl verify** 
- **Organized structure ready for additional certificate types** 
- **Ready to create user authentication certificates** 
- **Ready to create code signing certificates** 
- **Foundation for production PQC deployment complete**
+
+- Web server certificate created and signed
+- Complete quantum-resistant certificate chain established
+- Certificate verification successful with openssl verify
+- Organized structure ready for additional certificate types
+- Ready to create user authentication certificates
+- Ready to create code signing certificates
+- Foundation for production PQC deployment complete
 
 
 ---
@@ -1147,7 +1150,7 @@ User Authentication Certificate (ML-DSA-87, 90 days, clientAuth) COMPLETE
 2. **Path Navigation Complexity:** Multiple directory changes needed due to relative paths in OpenSSL config files
 3. **Extension Specificity:** User certificates require different extensions (`clientAuth`, `emailProtection`) vs server certificates (`serverAuth`)
 
-## **Key Learnings**
+## **Practical Insights**
 1. **User vs Server Certificates:** User certificates use `clientAuth` extensions and often have email addresses as subjects
 2. **Validity Differences:** User certificates typically have shorter validity (90-180 days) vs server certificates (1-2 years)
 3. **Extension Flexibility:** When CA config lacks specific extension sections, custom extensions files can override
@@ -1155,14 +1158,15 @@ User Authentication Certificate (ML-DSA-87, 90 days, clientAuth) COMPLETE
 5. **Client Authentication Use Cases:** `clientAuth` enables mutual TLS, VPN authentication, and secure user identification
 
 ## **Module 4 Part 2 Completion Status**
- **User authentication certificate created and signed** 
- **Custom extensions file created for clientAuth requirements** 
- **90-day validity period applied (standard for user certs)** 
- **Certificate chain validation successful** 
- **Complete quantum-resistant client authentication solution** 
- **Ready to create code signing certificates** 
- **All end-entity certificate types will be completed** 
- **Production-ready PQC certificate hierarchy established**
+
+- User authentication certificate created and signed
+- Custom extensions file created for clientAuth requirements
+- 90-day validity period applied (standard for user certs)
+- Certificate chain validation successful
+- Complete quantum-resistant client authentication solution
+- Ready to create code signing certificates
+- All end-entity certificate types will be completed
+- Production-ready PQC certificate hierarchy established
 
 Based on our recent work, I need to update **My-Lab-Journal.md** with **Module 4 Part 3: Code Signing Certificate**.
 
@@ -1341,7 +1345,7 @@ Code Signing Certificate (ML-DSA-87, 1 year, codeSigning) COMPLETE
 3. **Department Organization:** Created `Software Development Department` OU to reflect real-world organizational structure
 4. **ML-DSA-87 Performance:** Key generation and signing operations remain slower than classical algorithms
 
-## **Key Learnings**
+## **Practical Insights**
 1. **Code Signing Specifics:** Code signing certificates have unique requirements with limited key usage
 2. **Organizational Structure:** Different departments (Software Development, Authentication) help categorize certificate purposes
 3. **Extension Files:** Creating separate extensions files provides flexibility when CA configs lack specific sections
@@ -1349,14 +1353,15 @@ Code Signing Certificate (ML-DSA-87, 1 year, codeSigning) COMPLETE
 5. **Digital Signature Only:** Code signing only requires `digitalSignature` key usage, unlike server certificates
 
 ## **Module 4 Part 3 Completion Status**
- **Code signing certificate created and signed with ML-DSA-87** 
- **Proper extensions applied (codeSigning, digitalSignature)** 
- **One-year validity period applied (standard for code signing)** 
- **Complete certificate chain validated and created** 
- **All three end-entity certificate types now complete** 
- **Module 4 fully completed: Web Server, User Auth, and Code Signing certificates** 
- **Complete quantum-resistant PKI hierarchy established** 
- **Ready for production deployment or Module 5** 
+
+- Code signing certificate created and signed with ML-DSA-87
+- Proper extensions applied (codeSigning, digitalSignature)
+- One-year validity period applied (standard for code signing)
+- Complete certificate chain validated and created
+- All three end-entity certificate types now complete
+- Module 4 fully completed: Web Server, User Auth, and Code Signing certificates
+- Complete quantum-resistant PKI hierarchy established
+- Ready for production deployment or Module 5 
 
 ---
 
@@ -1706,16 +1711,16 @@ Vault Server Certificate (ML-DSA-87, 2 years, serverAuth, "Security Infrastructu
 
 ## **Module 4 Part 4 Completion Status**
 
-[x] Vault server directory structure created with certs/, csr/, private/ subdirectories
-[x] Configuration file created with proper SANs and security infrastructure OU
-[x] ML-DSA-87 private key generated with secure 600 permissions
-[x] Certificate Signing Request created and verified
-[x] Custom extensions file created for signing process
-[x] Certificate signed by Intermediate CA with 2-year validity (serial 1003)
-[x] Certificate extensions verified (SANs, key usage, EKU)
-[x] Certificate chain validated with openssl verify
-[x] CA database updated with new certificate entry
-[x] Complete chain file created and verified (3 certificates)
-[ ] Ready for Module 4 Part 5: Certificate Export Formats (PEM, DER, PKCS#12)
-
+- Vault server directory structure created with certs/, csr/, private/ subdirectories
+- Configuration file created with proper SANs and security infrastructure OU
+- ML-DSA-87 private key generated with secure 600 permissions
+- Certificate Signing Request created and verified
+- Custom extensions file created for signing process
+- Certificate signed by Intermediate CA with 2-year validity (serial 1003)
+- Certificate extensions verified (SANs, key usage, EKU)
+- Certificate chain validated with openssl verify
+- CA database updated with new certificate entry
+- Complete chain file created and verified (3 certificates)
+- Ready for Module 4 Part 5: Certificate Export Formats (PEM, DER, PKCS#12)
+ 
 ---
