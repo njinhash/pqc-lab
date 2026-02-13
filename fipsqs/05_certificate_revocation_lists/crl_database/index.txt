@@ -1,0 +1,4 @@
+R	270211025132Z	260212220327Z,keyCompromise	1000	unknown	/C=US/ST=California/O=Quantum Secure Web Inc/CN=www.quantumsecureweb.example.com/emailAddress=admin@quantumsecureweb.example.com
+R	260512043900Z	260213003034Z,affiliationChanged	1001	unknown	/C=US/ST=California/O=PQCLab Security/OU=Authentication Department/CN=pqc-user@example.com/emailAddress=pqc-user@example.com
+R	270211055255Z	260213004921Z,superseded	1002	unknown	/C=US/ST=California/O=PQCLab Security/OU=Software Development Department/CN=pqc-code-signer@example.com/emailAddress=pqc-code-signer@example.com
+R	280211234158Z	260213005229Z,cessationOfOperation	1003	unknown	/C=US/ST=Washington/O=PQCLab Security/OU=Security Infrastructure/CN=vault.pqclab.example.com/emailAddress=security@pqclab.example.com

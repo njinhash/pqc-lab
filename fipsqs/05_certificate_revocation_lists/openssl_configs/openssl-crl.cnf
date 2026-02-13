@@ -1,0 +1,37 @@
+# OpenSSL configuration for ML-DSA-87 CRL Generation
+# FIPS Quantum CA Lab - Module 5
+# Intermediate CA CRL Configuration
+
+[ ca ]
+default_ca = CA_intermediate
+
+[ CA_intermediate ]
+dir               = /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/05_certificate_revocation_lists/crl_database
+database          = $dir/index.txt
+serial            = $dir/serial
+crlnumber         = $dir/crlnumber
+certs             = $dir/certs
+new_certs_dir     = $dir/newcerts
+default_md        = sha512
+default_days      = 30
+default_crl_days  = 30
+policy            = policy_loose
+name_opt          = ca_default
+cert_opt          = ca_default
+copy_extensions   = copy
+unique_subject    = no
+
+[ policy_loose ]
+countryName             = optional
+stateOrProvinceName     = optional
+localityName            = optional
+organizationName        = optional
+organizationalUnitName  = optional
+commonName              = supplied
+emailAddress           = optional
+
+[ crl_ext ]
+authorityKeyIdentifier = keyid:always,issuer:always
+
+[ default ]
+crl_url                = http://crl.quantum-lab.local/intermediate.crl

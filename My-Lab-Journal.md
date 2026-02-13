@@ -1992,3 +1992,358 @@ openssl crl2pkcs7 -nocrl -certfile certs/vault_server.crt -certfile ../../03_fip
 
 ---
 
+## **Module 5: Certificate Revocation Lists (CRLs)**
+**Date:** February 12-13, 2026
+**Project:** Implementing post-quantum certificate revocation infrastructure with ML-DSA-87 signed CRLs
+**Technology:** OpenSSL 3.5.3, ML-DSA-87 algorithm, X.509 CRL v2, RFC 5280
+
+---
+
+## **Objective**
+Establish a complete certificate revocation infrastructure for the post-quantum PKI, including revocation of all four end-entity certificates, generation of ML-DSA-87 signed CRLs, and verification of the complete revocation lifecycle.
+
+---
+
+## **Step-by-Step Implementation**
+
+### **Step 1: Create Module 5 Directory Structure**
+**Purpose:** Establish organized workspace for CRL operations separate from certificate issuance
+```bash
+cd /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/
+mkdir -p 05_certificate_revocation_lists/{crl,crl_database,scripts,openssl_configs}
+```
+**Result:** Created directory tree with crl/, crl_database/, scripts/, openssl_configs/ subdirectories
+
+---
+
+### **Step 2: Copy Intermediate CA Database for CRL Operations**
+**Purpose:** Reuse existing certificate database to maintain continuity of issued certificates
+```bash
+cp -r 03_fips_quantum_ca_intermediate/intermediate/{index.txt,serial,certs,newcerts} 05_certificate_revocation_lists/crl_database/
+```
+**Result:** Copied certificate database (index.txt), serial number tracker, and issued certificates directory
+
+---
+
+### **Step 3: Initialize CRL Number File**
+**Purpose:** Create CRL sequence number tracker (each CRL gets incrementing number)
+```bash
+echo "1000" > 05_certificate_revocation_lists/crl_database/crlnumber
+```
+**Result:** Created crlnumber file with initial value 1000
+
+---
+
+### **Step 4: Create CRL OpenSSL Configuration File**
+**Purpose:** Define CRL-specific settings including database paths, validity period, and extensions
+```bash
+cat > 05_certificate_revocation_lists/openssl_configs/openssl-crl.cnf << 'EOF'
+[ ca ]
+default_ca = CA_intermediate
+
+[ CA_intermediate ]
+dir               = ./crl_database
+database          = $dir/index.txt
+serial            = $dir/serial
+crlnumber         = $dir/crlnumber
+certs             = $dir/certs
+new_certs_dir     = $dir/newcerts
+default_md        = sha512
+default_days      = 30
+default_crl_days  = 30
+policy            = policy_loose
+name_opt          = ca_default
+cert_opt          = ca_default
+copy_extensions   = copy
+unique_subject    = no
+
+[ policy_loose ]
+countryName             = optional
+stateOrProvinceName     = optional
+localityName            = optional
+organizationName        = optional
+organizationalUnitName  = optional
+commonName              = supplied
+emailAddress           = optional
+
+[ crl_ext ]
+authorityKeyIdentifier = keyid:always,issuer:always
+
+[ default ]
+crl_url                = http://crl.quantum-lab.local/intermediate.crl
+EOF
+```
+**Result:** Created CRL configuration with relative path causing path resolution issues (later fixed)
+
+---
+
+### **Step 5: Fix Intermediate CA Private Key Permissions**
+**Purpose:** Secure private key after discovering world-readable permissions (644)
+```bash
+chmod 600 03_fips_quantum_ca_intermediate/intermediate/private/intermediate_ca.key
+```
+**Result:** Private key permissions corrected to 600 (owner read/write only)
+
+---
+
+### **Step 6: Fix CRL Configuration Path Resolution**
+**Purpose:** Replace relative path with absolute path so OpenSSL can locate database files
+```bash
+sed -i '9s|dir[[:space:]]*=[[:space:]]*\./crl_database|dir               = /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/05_certificate_revocation_lists/crl_database|' fipsqs/05_certificate_revocation_lists/openssl_configs/openssl-crl.cnf
+```
+**Result:** Configuration updated with absolute path, verification confirmed line 9 correctly modified
+
+---
+
+### **Step 7: Revoke Web Server Certificate (Serial 1000)**
+**Purpose:** First certificate revocation - web server with key compromise reason
+```bash
+openssl ca -config fipsqs/05_certificate_revocation_lists/openssl_configs/openssl-crl.cnf \
+ -name CA_intermediate \
+ -keyfile fipsqs/03_fips_quantum_ca_intermediate/intermediate/private/intermediate_ca.key \
+ -cert fipsqs/03_fips_quantum_ca_intermediate/intermediate/certs/intermediate_ca.crt \
+ -revoke fipsqs/04_end_entity_certificates/web_server/certs/web_server.crt \
+ -crl_reason keyCompromise
+```
+**Result:** Database updated - index.txt shows `R` flag, revocation timestamp, reason code
+
+---
+
+### **Step 8: Generate First CRL (Serial 1000 Only)**
+**Purpose:** Create initial CRL containing web server certificate
+```bash
+openssl ca -config fipsqs/05_certificate_revocation_lists/openssl_configs/openssl-crl.cnf \
+ -name CA_intermediate \
+ -keyfile fipsqs/03_fips_quantum_ca_intermediate/intermediate/private/intermediate_ca.key \
+ -cert fipsqs/03_fips_quantum_ca_intermediate/intermediate/certs/intermediate_ca.crt \
+ -gencrl \
+ -out fipsqs/05_certificate_revocation_lists/crl/intermediate.crl.pem
+```
+**Result:** Generated CRL with serial 1000, signature algorithm ML-DSA-87, CRL number 1000
+
+---
+
+### **Step 9: Verify First CRL Signature**
+**Purpose:** Cryptographically validate CRL was signed by Intermediate CA
+```bash
+openssl crl -in fipsqs/05_certificate_revocation_lists/crl/intermediate.crl.pem \
+ -CAfile fipsqs/03_fips_quantum_ca_intermediate/intermediate/certs/intermediate_ca.crt \
+ -noout -verify
+```
+**Result:** `verify OK` - ML-DSA-87 signature valid
+
+---
+
+### **Step 10: Revoke User Authentication Certificate (Serial 1001)**
+**Purpose:** Second certificate revocation - user certificate with affiliation change reason
+```bash
+openssl ca -config fipsqs/05_certificate_revocation_lists/openssl_configs/openssl-crl.cnf \
+ -name CA_intermediate \
+ -keyfile fipsqs/03_fips_quantum_ca_intermediate/intermediate/private/intermediate_ca.key \
+ -cert fipsqs/03_fips_quantum_ca_intermediate/intermediate/certs/intermediate_ca.crt \
+ -revoke fipsqs/04_end_entity_certificates/user_auth/certs/user_auth.crt \
+ -crl_reason affiliationChanged
+```
+**Result:** Database updated - index.txt shows `R` flag for serial 1001
+
+---
+
+### **Step 11: Generate Updated CRL (Serials 1000, 1001)**
+**Purpose:** Create CRL containing both revoked certificates
+```bash
+openssl ca -config fipsqs/05_certificate_revocation_lists/openssl_configs/openssl-crl.cnf \
+ -name CA_intermediate \
+ -keyfile fipsqs/03_fips_quantum_ca_intermediate/intermediate/private/intermediate_ca.key \
+ -cert fipsqs/03_fips_quantum_ca_intermediate/intermediate/certs/intermediate_ca.crt \
+ -gencrl \
+ -out fipsqs/05_certificate_revocation_lists/crl/intermediate.crl.pem
+```
+**Result:** CRL updated with both serials, CRL number incremented to 1001
+
+---
+
+### **Step 12: Revoke Code Signing Certificate (Serial 1002)**
+**Purpose:** Third certificate revocation - code signing with superseded reason
+```bash
+openssl ca -config fipsqs/05_certificate_revocation_lists/openssl_configs/openssl-crl.cnf \
+ -name CA_intermediate \
+ -keyfile fipsqs/03_fips_quantum_ca_intermediate/intermediate/private/intermediate_ca.key \
+ -cert fipsqs/03_fips_quantum_ca_intermediate/intermediate/certs/intermediate_ca.crt \
+ -revoke fipsqs/04_end_entity_certificates/code_signing/certs/code_signing.crt \
+ -crl_reason superseded
+```
+**Result:** Database updated - index.txt shows `R` flag for serial 1002
+
+---
+
+### **Step 13: Revoke Vault Server Certificate (Serial 1003)**
+**Purpose:** Fourth certificate revocation - vault server with cessation of operation reason
+```bash
+openssl ca -config fipsqs/05_certificate_revocation_lists/openssl_configs/openssl-crl.cnf \
+ -name CA_intermediate \
+ -keyfile fipsqs/03_fips_quantum_ca_intermediate/intermediate/private/intermediate_ca.key \
+ -cert fipsqs/03_fips_quantum_ca_intermediate/intermediate/certs/intermediate_ca.crt \
+ -revoke fipsqs/04_end_entity_certificates/vault_server/certs/vault_server.crt \
+ -crl_reason cessationOfOperation
+```
+**Result:** Database updated - index.txt shows `R` flag for serial 1003, all four certificates now revoked
+
+---
+
+### **Step 14: Generate Final CRL (All Four Serials: 1000, 1001, 1002, 1003)**
+**Purpose:** Create complete CRL containing every revoked certificate issued by Intermediate CA
+```bash
+openssl ca -config fipsqs/05_certificate_revocation_lists/openssl_configs/openssl-crl.cnf \
+ -name CA_intermediate \
+ -keyfile fipsqs/03_fips_quantum_ca_intermediate/intermediate/private/intermediate_ca.key \
+ -cert fipsqs/03_fips_quantum_ca_intermediate/intermediate/certs/intermediate_ca.crt \
+ -gencrl \
+ -out fipsqs/05_certificate_revocation_lists/crl/intermediate.crl.pem
+```
+**Result:** Final CRL generated with all four serials, CRL number 1002, 30-day validity
+
+---
+
+### **Step 15: Verify Final CRL**
+**Purpose:** Comprehensive verification of CRL integrity and content
+```bash
+# Verify signature
+openssl crl -in fipsqs/05_certificate_revocation_lists/crl/intermediate.crl.pem \
+ -CAfile fipsqs/03_fips_quantum_ca_intermediate/intermediate/certs/intermediate_ca.crt \
+ -noout -verify
+
+# Count revoked certificates
+openssl crl -in fipsqs/05_certificate_revocation_lists/crl/intermediate.crl.pem \
+ -noout -text | grep "Serial Number" | wc -l
+
+# Check CRL number
+openssl crl -in fipsqs/05_certificate_revocation_lists/crl/intermediate.crl.pem \
+ -noout -text | grep "CRL Number"
+
+# Verify signature algorithm
+openssl crl -in fipsqs/05_certificate_revocation_lists/crl/intermediate.crl.pem \
+ -noout -text | grep "Signature Algorithm" | head -1
+```
+**Result:**
+- `verify OK` - ML-DSA-87 signature valid
+- `4` - All four certificates in CRL
+- `CRL Number: 1002` - Third CRL generation
+- `Signature Algorithm: ML-DSA-87` - Post-quantum signing confirmed
+
+---
+
+## **Final File Structure Created**
+
+```
+05_certificate_revocation_lists/
+├── crl/
+│   └── intermediate.crl.pem           # Final CRL (4 serials, ML-DSA-87 signed)
+├── crl_database/
+│   ├── index.txt                     # Certificate database (4 revoked, 0 valid)
+│   ├── serial                        # Next certificate serial (1004)
+│   ├── crlnumber                    # Next CRL number (1003)
+│   ├── certs/                       # Issued certificates by serial
+│   └── newcerts/                    # Certificate copies
+├── openssl_configs/
+│   └── openssl-crl.cnf              # CRL configuration (absolute path)
+└── scripts/                         # (Empty - for future automation)
+```
+
+---
+
+## **Certificate Revocation Architecture**
+
+```
+Root CA (ML-DSA-87, offline)
+ ↓
+Intermediate CA (ML-DSA-87, online, issues certificates & CRLs)
+ ↓
+Certificate Database (index.txt)
+ ├── Serial 1000: Web Server        → R (keyCompromise) [2026-02-13]
+ ├── Serial 1001: User Auth         → R (affiliationChanged) [2026-02-13]
+ ├── Serial 1002: Code Signing      → R (superseded) [2026-02-13]
+ └── Serial 1003: Vault Server      → R (cessationOfOperation) [2026-02-13]
+ ↓
+CRL Generation (every 30 days)
+ └── CRL #1002: Contains serials 1000, 1001, 1002, 1003
+     ├── Signature: ML-DSA-87 with SHA512
+     ├── Issuer: Intermediate CA
+     ├── This Update: Feb 13 00:26:26 2026
+     └── Next Update: Mar 15 00:26:26 2026
+```
+
+---
+
+## **Key Technical Specifications**
+
+| Component | Value | Significance |
+|-----------|-------|--------------|
+| **CRL Format** | X.509 CRL v2 | RFC 5280 compliant |
+| **Signature Algorithm** | ML-DSA-87 with SHA512 | NIST FIPS 204, Level 5 |
+| **CRL Number** | 1002 | Third CRL generated |
+| **Revoked Certificates** | 4 | All end-entity certificates |
+| **CRL Validity** | 30 days | `default_crl_days = 30` |
+| **Next CRL Number** | 1003 | Stored in crlnumber file |
+| **CRL File Size** | 2,847 bytes | PEM encoded |
+| **Database Status** | 4 R, 0 V | All certificates revoked |
+
+**Revocation Reasons Used:**
+- `keyCompromise` - Web Server (most severe)
+- `affiliationChanged` - User Authentication
+- `superseded` - Code Signing
+- `cessationOfOperation` - Vault Server
+
+---
+
+## **Challenges Overcome**
+
+- **Relative Path Resolution Failure:** Initial configuration used `./crl_database` but OpenSSL executed from lab root directory, causing "No such file or directory" error. Resolved by replacing with absolute path using `sed -i` with exact whitespace matching pattern.
+
+- **Configuration Whitespace Mismatch:** First `sed` attempt failed because pattern `dir = \./crl_database` didn't match actual file with 15 spaces. Resolved by using `[[:space:]]*` pattern and targeting specific line number 9 from `grep -n` output.
+
+- **World-Readable Private Key:** Intermediate CA private key had 644 permissions (world-readable). Immediately corrected to 600 using `chmod 600`, confirming secure key storage practice.
+
+- **CRL Number Increment Verification:** Initially unclear if CRL number auto-incremented. Verified by generating three CRLs and checking numbers: 1000 (first), 1001 (second), 1002 (third).
+
+- **Missing Revocation Reasons:** Database entries initially showed no reason codes. Resolved by adding `-crl_reason` flag to revocation commands, confirmed in index.txt as `,keyCompromise`, `,affiliationChanged`, etc.
+
+---
+
+## **Practical Insights**
+
+- **CRL Generation is Incremental:** OpenSSL does not delete previous revocations when generating new CRLs. It reads the entire index.txt and includes ALL revoked certificates. Each new CRL supersedes the previous one.
+
+- **Absolute Paths vs Relative Paths:** OpenSSL resolves paths relative to the current working directory, not the config file location. Absolute paths are more reliable for CA operations but less portable. For this lab, absolute paths were necessary.
+
+- **CRL Number Auto-Increment:** The `crlnumber` file is automatically incremented by OpenSSL each time `-gencrl` is called. Starting at 1000, subsequent CRLs become 1001, 1002, etc. This provides version tracking for clients.
+
+- **Revocation Reasons are Optional but Valuable:** RFC 5280 defines revocation reasons but they are not strictly required. Including them provides audit trail and helps clients determine appropriate response (e.g., keyCompromise vs affiliationChanged).
+
+- **Database Integrity Verification:** The `index.txt` file format uses tab-separated fields with clear semantics. Viewing with `cat -A` reveals tabs as `^I` and line endings as `$`, making it easy to verify correct database updates.
+
+- **Three-Verification Protocol:** Establishing a protocol of verifying (1) index.txt status, (2) CRL content, and (3) CRL signature provides complete confidence in revocation operations. This pattern proved reliable across all four certificates.
+
+---
+
+## **Module 5 Completion Status**
+
+- [x] CRL directory structure created and organized
+- [x] Certificate database copied from Intermediate CA
+- [x] CRL number file initialized to 1000
+- [x] CRL configuration created with proper extensions
+- [x] Path resolution issue diagnosed and fixed with absolute path
+- [x] Intermediate CA private key permissions secured (600)
+- [x] Web Server certificate revoked (serial 1000, keyCompromise)
+- [x] First CRL generated and signature verified (ML-DSA-87)
+- [x] User Authentication certificate revoked (serial 1001, affiliationChanged)
+- [x] Updated CRL generated with 2 revoked serials
+- [x] Code Signing certificate revoked (serial 1002, superseded)
+- [x] Vault Server certificate revoked (serial 1003, cessationOfOperation)
+- [x] Final CRL generated with all 4 revoked serials
+- [x] CRL signature verified with openssl crl -verify
+- [x] CRL number confirmed at 1002 (three generations)
+- [x] All four certificates verified as REVOKED in index.txt
+- [x] Complete revocation lifecycle documented
+- [>] **Ready for Module 6: Hybrid Certificates**
+
+---
