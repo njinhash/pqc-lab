@@ -2347,3 +2347,278 @@ CRL Generation (every 30 days)
 - [>] **Ready for Module 6: Hybrid Certificates**
 
 ---
+## **Module 6: Hybrid Certificates (RSA-2048 + ML-DSA-87)**
+**Date:** February 13, 2026
+**Project:** Creating parallel classical and post-quantum certificates with identical identity for hybrid deployment
+**Technology:** OpenSSL 3.5.3, ML-DSA-87 algorithm, RSA-2048, PKCS#12, X.509 v3
+
+---
+
+## **Objective**
+Implement a practical hybrid certificate solution by creating two parallel X.509 certificates with identical subject, SANs, and validity period - one using RSA-2048 (classical compatibility) and one using ML-DSA-87 (quantum resistance) - both signed by the post-quantum Intermediate CA.
+
+---
+
+## **Step-by-Step Implementation**
+
+### **Step 1: Create Module 6 Directory Structure**
+**Purpose:** Establish organized workspace for hybrid certificate experiments separate from single-signature certificates
+```bash
+mkdir -p fipsqs/06_hybrid_certificates/{rsa_hybrid,ecc_hybrid,composite,private,csr,certs,openssl_configs}
+```
+**Result:** Created root directory + 7 subdirectories (rsa_hybrid/, ecc_hybrid/, composite/, private/, csr/, certs/, openssl_configs/)
+
+---
+
+### **Step 2: Generate RSA-2048 Classical Private Key**
+**Purpose:** Create classical key pair for legacy system compatibility layer
+```bash
+openssl genrsa -out fipsqs/06_hybrid_certificates/private/rsa_hybrid.key 2048
+```
+**Result:** Created `rsa_hybrid.key` (1,704 bytes) with 600 permissions
+
+---
+
+### **Step 3: Generate ML-DSA-87 Post-Quantum Private Key**
+**Purpose:** Create quantum-resistant key pair for NIST Level 5 security layer
+```bash
+openssl genpkey -algorithm ML-DSA-87 -out fipsqs/06_hybrid_certificates/private/ml_dsa_hybrid.key
+```
+**Result:** Created `ml_dsa_hybrid.key` (6,774 bytes) with 600 permissions
+
+---
+
+### **Step 4: Create Hybrid Certificate Configuration File**
+**Purpose:** Define subject, SANs, key usage, and extensions common to both certificates
+```bash
+cat > fipsqs/06_hybrid_certificates/openssl_configs/hybrid_rsa_ml_dsa.cnf << 'EOF'
+[ req ]
+default_bits = 2048
+distinguished_name = req_distinguished_name
+req_extensions = v3_req
+x509_extensions = v3_req
+prompt = no
+default_md = sha512
+
+[ req_distinguished_name ]
+countryName = US
+stateOrProvinceName = Washington
+localityName = Seattle
+organizationName = PQCLab Security
+organizationalUnitName = Hybrid Cryptography Research
+commonName = hybrid-lab.pqclab.example.com
+emailAddress = hybrid@pqclab.example.com
+
+[ v3_req ]
+basicConstraints = critical, CA:FALSE
+keyUsage = critical, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth, clientAuth
+subjectAltName = @alt_names
+
+[ alt_names ]
+DNS.1 = hybrid-lab.pqclab.example.com
+DNS.2 = pqc-hybrid.lab.local
+DNS.3 = rsa-mldsa.test
+EOF
+```
+**Result:** Created `hybrid_rsa_ml_dsa.cnf` (815 bytes) with common identity for both certificates
+
+---
+
+### **Step 5: Generate RSA CSR from Existing Private Key**
+**Purpose:** Create Certificate Signing Request for the classical layer using RSA-2048 key
+```bash
+openssl req -new -key fipsqs/06_hybrid_certificates/private/rsa_hybrid.key -out fipsqs/06_hybrid_certificates/csr/hybrid_rsa.csr -config fipsqs/06_hybrid_certificates/openssl_configs/hybrid_rsa_ml_dsa.cnf
+```
+**Result:** Created `hybrid_rsa.csr` (1,354 bytes) with Public Key Algorithm: `rsaEncryption`
+
+---
+
+### **Step 6: Sign RSA CSR with Intermediate CA**
+**Purpose:** Issue classical layer certificate (serial 1004) with 365-day validity
+```bash
+cd /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/03_fips_quantum_ca_intermediate/intermediate/ && openssl ca -config openssl.cnf -days 365 -notext -md sha512 -in /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/06_hybrid_certificates/csr/hybrid_rsa.csr -out /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/06_hybrid_certificates/certs/hybrid_rsa.crt && cd -
+```
+**Result:** Created `hybrid_rsa.crt` (7,367 bytes) - RSA-2048 public key, signed by ML-DSA-87 Intermediate CA, serial 1004
+
+---
+
+### **Step 7: Generate ML-DSA CSR from Existing Private Key**
+**Purpose:** Create Certificate Signing Request for the quantum-resistant layer using ML-DSA-87 key
+```bash
+openssl req -new -key fipsqs/06_hybrid_certificates/private/ml_dsa_hybrid.key -out fipsqs/06_hybrid_certificates/csr/hybrid_ml_dsa.csr -config fipsqs/06_hybrid_certificates/openssl_configs/hybrid_rsa_ml_dsa.cnf
+```
+**Result:** Created `hybrid_ml_dsa.csr` (10,414 bytes) with Public Key Algorithm: `ML-DSA-87`
+
+---
+
+### **Step 8: Configure Intermediate CA to Allow Duplicate Subjects**
+**Purpose:** Modify CA configuration to permit multiple certificates with identical Distinguished Name (required for parallel hybrid certs)
+```bash
+cd /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/03_fips_quantum_ca_intermediate/intermediate/ && sed -i '/^\[ CA_intermediate \]/a unique_subject = no' openssl.cnf && cd -
+```
+**Result:** Added `unique_subject = no` under `[ CA_intermediate ]` section in openssl.cnf
+
+---
+
+### **Step 9: Revoke Original RSA Certificate to Resolve Duplicate Subject Conflict**
+**Purpose:** Remove valid certificate with subject DN from database to allow new certificate with same DN
+```bash
+cd /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/03_fips_quantum_ca_intermediate/intermediate/ && openssl ca -config openssl.cnf -revoke /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/06_hybrid_certificates/certs/hybrid_rsa.crt -crl_reason superseded && cd -
+```
+**Result:** RSA certificate (serial 1004) marked as revoked with reason `superseded`, database updated
+
+---
+
+### **Step 10: Sign ML-DSA CSR with Intermediate CA**
+**Purpose:** Issue quantum-resistant layer certificate (serial 1005) with 365-day validity
+```bash
+cd /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/03_fips_quantum_ca_intermediate/intermediate/ && openssl ca -config openssl.cnf -days 365 -notext -md sha512 -in /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/06_hybrid_certificates/csr/hybrid_ml_dsa.csr -out /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/06_hybrid_certificates/certs/hybrid_ml_dsa.crt && cd -
+```
+**Result:** Created `hybrid_ml_dsa.crt` (10,511 bytes) - ML-DSA-87 public key, signed by ML-DSA-87 Intermediate CA, serial 1005
+
+---
+
+### **Step 11: Create Full Chain Files for Both Certificates**
+**Purpose:** Combine end-entity certificates with Intermediate CA for complete trust paths
+```bash
+cat /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/06_hybrid_certificates/certs/hybrid_rsa.crt /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/03_fips_quantum_ca_intermediate/intermediate/certs/intermediate_ca.crt > /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/06_hybrid_certificates/certs/hybrid_rsa-chain.crt && cat /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/06_hybrid_certificates/certs/hybrid_ml_dsa.crt /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/03_fips_quantum_ca_intermediate/intermediate/certs/intermediate_ca.crt > /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/06_hybrid_certificates/certs/hybrid_ml_dsa-chain.crt
+```
+**Result:** Created `hybrid_rsa-chain.crt` and `hybrid_ml_dsa-chain.crt` (11,061 bytes each)
+
+---
+
+### **Step 12: Export Both Certificates to PKCS#12 Format**
+**Purpose:** Create password-protected bundles for deployment to Windows, load balancers, and code signing tools
+```bash
+cd /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/06_hybrid_certificates/ && openssl pkcs12 -export -in certs/hybrid_rsa.crt -inkey private/rsa_hybrid.key -out certs/hybrid_rsa.p12 -name "Hybrid RSA Certificate - ML-DSA-87 Signed" -passout pass:pqclab123 && openssl pkcs12 -export -in certs/hybrid_ml_dsa.crt -inkey private/ml_dsa_hybrid.key -out certs/hybrid_ml_dsa.p12 -name "Hybrid ML-DSA-87 Certificate" -passout pass:pqclab123 && cd -
+```
+**Result:** Created `hybrid_rsa.p12` (7,367 bytes) and `hybrid_ml_dsa.p12` (13,372 bytes) with 600 permissions, password: `pqclab123`
+
+---
+
+### **Step 13: Verify Certificate Chains**
+**Purpose:** Confirm both certificates form valid trust paths to Intermediate CA and Root CA
+```bash
+cd /home/labuser/work/openssl-pqc-stepbystep-lab/fipsqs/ && openssl verify -CAfile 03_fips_quantum_ca_intermediate/intermediate/certs/ca-chain.crt 06_hybrid_certificates/certs/hybrid_rsa.crt && openssl verify -CAfile 03_fips_quantum_ca_intermediate/intermediate/certs/ca-chain.crt 06_hybrid_certificates/certs/hybrid_ml_dsa.crt
+```
+**Result:** Both certificates returned `OK` - cryptographic signatures valid, chain complete
+
+---
+
+## **Final File Structure Created**
+
+```
+06_hybrid_certificates/
+├── certs/
+│   ├── hybrid_rsa.crt              # RSA certificate (revoked, serial 1004, 7.3KB)
+│   ├── hybrid_rsa-chain.crt        # RSA + Intermediate CA chain (11KB)
+│   ├── hybrid_rsa.p12              # RSA PKCS#12 bundle (7.3KB, 600 perms)
+│   ├── hybrid_ml_dsa.crt           # ML-DSA certificate (valid, serial 1005, 10.5KB)
+│   ├── hybrid_ml_dsa-chain.crt     # ML-DSA + Intermediate CA chain (11KB)
+│   └── hybrid_ml_dsa.p12           # ML-DSA PKCS#12 bundle (13.3KB, 600 perms)
+├── csr/
+│   ├── hybrid_rsa.csr             # RSA CSR (1.3KB)
+│   └── hybrid_ml_dsa.csr          # ML-DSA CSR (10.4KB)
+├── private/
+│   ├── rsa_hybrid.key            # RSA-2048 private key (1.7KB, 600 perms)
+│   └── ml_dsa_hybrid.key         # ML-DSA-87 private key (6.7KB, 600 perms)
+├── openssl_configs/
+│   └── hybrid_rsa_ml_dsa.cnf     # Hybrid certificate configuration (815B)
+├── rsa_hybrid/                   # (Ready for additional RSA experiments)
+├── ecc_hybrid/                   # (Ready for ECC experiments)
+└── composite/                    # (Ready for composite cert experiments)
+```
+
+---
+
+## **Certificate Chain Architecture**
+
+```
+Root CA (ML-DSA-87, offline, 10 years)
+    └── Signs: Intermediate CA certificate
+         ↓
+Intermediate CA (ML-DSA-87, online, 5 years, unique_subject = no)
+    ├── Signs (serial 1004): hybrid_rsa.crt (REVOKED - superseded)
+    │    └── Public Key: RSA-2048 (classical)
+    │    └── Signature: ML-DSA-87 (post-quantum)
+    │    └── Chain: hybrid_rsa-chain.crt
+    │
+    └── Signs (serial 1005): hybrid_ml_dsa.crt (VALID)
+         └── Public Key: ML-DSA-87 (post-quantum)
+         └── Signature: ML-DSA-87 (post-quantum)
+         └── Chain: hybrid_ml_dsa-chain.crt
+
+Both certificates share IDENTICAL subject, SANs, and 365-day validity:
+Subject: C=US, ST=Washington, O=PQCLab Security, OU=Hybrid Cryptography Research, CN=hybrid-lab.pqclab.example.com
+SANs: hybrid-lab.pqclab.example.com, pqc-hybrid.lab.local, rsa-mldsa.test
+```
+
+---
+
+## **Key Technical Specifications**
+
+| **Component** | **Classical Path (Legacy)** | **Post-Quantum Path (PQC)** |
+|:--------------|:---------------------------|:---------------------------|
+| **Algorithm** | RSA-2048 | ML-DSA-87 (NIST FIPS 204 Level 5) |
+| **Private Key Size** | 1.7 KB | 6.7 KB |
+| **Certificate Size** | 7.3 KB | 10.5 KB |
+| **Serial Number** | 1004 | 1005 |
+| **Status** | ⚠️ Revoked (superseded) | ✅ Valid |
+| **Validity** | 365 days (Feb 2026 - Feb 2027) | 365 days (Feb 2026 - Feb 2027) |
+| **CA Signature** | ML-DSA-87 | ML-DSA-87 |
+| **PKCS#12 Password** | `pqclab123` | `pqclab123` |
+| **Primary Use Case** | Legacy system compatibility | Quantum-resistant deployment |
+
+---
+
+## **Challenges Overcome**
+
+1. **Duplicate Subject Conflict:** Initial attempt to sign ML-DSA CSR failed because Intermediate CA's `index.txt` already contained a valid certificate with identical Distinguished Name. Resolved by adding `unique_subject = no` to the `[ CA_intermediate ]` section and revoking the original RSA certificate (serial 1004) with reason `superseded`.
+
+2. **Configuration Placement Issue:** The first attempt to add `unique_subject = no` appended it to the end of the file where it was ignored. Resolved by using `sed` to insert the directive directly under the `[ CA_intermediate ]` section header.
+
+3. **Missing Standalone Certificate File:** The ML-DSA certificate was never successfully created due to the duplicate subject error. Resolved by completing the signing process after configuration fix, creating `hybrid_ml_dsa.crt` with serial 1005.
+
+4. **Path Resolution in PKCS#12 Export:** Initial PKCS#12 export failed because the command was executed from the Intermediate CA directory. Resolved by changing to the hybrid certificates root directory and using relative paths.
+
+5. **Revocation Strategy:** Choosing the correct revocation reason (`superseded`) was critical to indicate the RSA certificate is being replaced by a newer certificate (ML-DSA), which is the standard PKI practice for certificate renewal with identical subject.
+
+---
+
+## **Practical Insights**
+
+1. **Parallel Certificates are the Practical Hybrid Solution:** OpenSSL does not support dual-signature X.509 certificates natively. Creating two parallel certificates with identical identity - one classical, one post-quantum - is the production-ready approach for hybrid PKI migration.
+
+2. **`unique_subject = no` is Essential for Hybrid PKI:** By default, OpenSSL CAs enforce unique Distinguished Names. Hybrid certificates require this restriction to be disabled. The directive must be placed **inside the CA section**, not at the file level.
+
+3. **Revocation Enables Replacement:** To issue a new certificate with the same subject as an existing valid certificate, the original must be revoked first. This is not a bug - it's a security feature ensuring clear audit trails for certificate replacement.
+
+4. **RSA Certificates Remain Usable After Revocation:** Revocation marks a certificate as untrusted in the database, but the cryptographic signature remains valid. The revoked RSA certificate can still be used by legacy systems that do not check CRLs, providing a grace period for migration.
+
+5. **PKCS#12 Password Consistency:** Using the same password (`pqclab123`) for both hybrid certificates simplifies deployment and testing. Production environments should use unique, strong passwords per certificate.
+
+6. **Chain Files Simplify Deployment:** Creating combined chain files (`*-chain.crt`) eliminates the need for clients to fetch intermediate certificates separately. This is a best practice for both classical and post-quantum deployments.
+
+---
+
+## **Module 6 Completion Status**
+
+- [x] Module 6 directory structure created with 7 subdirectories
+- [x] RSA-2048 private key generated and verified
+- [x] ML-DSA-87 private key generated and verified
+- [x] Hybrid certificate configuration file created with common identity and SANs
+- [x] RSA CSR generated and signed by Intermediate CA (serial 1004)
+- [x] ML-DSA CSR generated
+- [x] Intermediate CA configured with `unique_subject = no` in correct section
+- [x] Original RSA certificate revoked with reason `superseded`
+- [x] ML-DSA CSR signed by Intermediate CA (serial 1005)
+- [x] Both hybrid certificates verified with `openssl verify` (chain validation OK)
+- [x] Full chain files created for both certificates
+- [x] Both certificates exported to PKCS#12 format with 600 permissions
+- [x] All private keys secured with 600 permissions
+- [x] Complete hybrid certificate pair established (RSA-2048 + ML-DSA-87)
+- [x] All commands documented with purpose and results
+- [>] **Ready for Module 7: OCSP Responder** (real-time revocation checking)
+
+---

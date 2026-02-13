@@ -1,0 +1,30 @@
+# Hybrid Certificate Configuration - RSA-2048 + ML-DSA-87
+# OpenSSL 3.5.3 - FIPS Quantum CA Lab - Module 6
+
+[ req ]
+default_bits = 2048
+distinguished_name = req_distinguished_name
+req_extensions = v3_req
+x509_extensions = v3_req
+prompt = no
+default_md = sha512
+
+[ req_distinguished_name ]
+countryName = US
+stateOrProvinceName = Washington
+localityName = Seattle
+organizationName = PQCLab Security
+organizationalUnitName = Hybrid Cryptography Research
+commonName = hybrid-lab.pqclab.example.com
+emailAddress = hybrid@pqclab.example.com
+
+[ v3_req ]
+basicConstraints = critical, CA:FALSE
+keyUsage = critical, digitalSignature, keyEncipherment
+extendedKeyUsage = serverAuth, clientAuth
+subjectAltName = @alt_names
+
+[ alt_names ]
+DNS.1 = hybrid-lab.pqclab.example.com
+DNS.2 = pqc-hybrid.lab.local
+DNS.3 = rsa-mldsa.test
