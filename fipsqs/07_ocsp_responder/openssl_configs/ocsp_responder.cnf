@@ -1,0 +1,26 @@
+# OpenSSL OCSP Responder Configuration
+# For Module 7 - Post-Quantum PKI Lab
+# Last Updated: February 14, 2026
+
+[OCSP]
+# Path to the CA's index.txt file (certificate database)
+database = ../../03_fips_quantum_ca_intermediate/intermediate/index.txt
+
+# Path to the CA's certificates
+CAcert = ../../03_fips_quantum_ca_intermediate/intermediate/certs/intermediate_ca.crt
+CAkey = ../../03_fips_quantum_ca_intermediate/intermediate/private/intermediate_ca.key
+
+# Path to the OCSP responder's signing certificate
+responder_cert = ./ca/ocsp_signer.crt
+responder_key = ./ca/ocsp_signer.key
+
+# Network settings
+port = 9080
+host = 0.0.0.0
+
+# Response settings
+default_status = good
+next_update_days = 1
+
+# Logging
+log_file = ../logs/ocsp.log

@@ -1,0 +1,33 @@
+# OpenSSL OCSP Signer Certificate Configuration
+# For Module 7 - Post-Quantum PKI Lab
+# Last Updated: February 14, 2026
+
+[req]
+default_bits        = 0
+default_keyfile     = ocsp_signer.key
+distinguished_name  = req_distinguished_name
+string_mask         = utf8only
+req_extensions      = req_ext
+x509_extensions     = v3_req
+prompt              = no
+
+[req_distinguished_name]
+countryName            = US
+stateOrProvinceName    = Washington
+localityName           = Seattle
+organizationName       = PQCLab Security
+organizationalUnitName = PKI Infrastructure
+commonName             = OCSP Responder
+emailAddress           = ocsp@pqclab.example.com
+
+[req_ext]
+basicConstraints       = critical, CA:FALSE
+keyUsage               = critical, digitalSignature
+extendedKeyUsage       = critical, OCSPSigning
+subjectKeyIdentifier   = hash
+
+[v3_req]
+basicConstraints       = critical, CA:FALSE
+keyUsage               = critical, digitalSignature
+extendedKeyUsage       = critical, OCSPSigning
+subjectKeyIdentifier   = hash
