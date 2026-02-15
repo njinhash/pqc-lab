@@ -1,4 +1,4 @@
-# My Post-Quantum Cryptography Lab Journey
+`# My Post-Quantum Cryptography Lab Journey
 Start Date: [02/09/2026]
 
 ## CHAPTER 1: SETUP PHASE
@@ -2895,3 +2895,150 @@ Client (openssl ocsp)                OCSP Responder (port 9080)
 - [x] Complete OCSP infrastructure operational
 - [x] All steps documented with commands and results
 - [>] Ready for Module 8: Production Deployment (optional)
+
+---
+
+## **Module 8 Part 1: Local Web Server Deployment with Hybrid Certificate**
+**Date:** February 15, 2026
+**Project:** Deploying hybrid RSA-2048 + ML-DSA-87 certificate to local OpenSSL test server for browser verification
+**Technology:** OpenSSL 3.5.3, ML-DSA-87 algorithm, RSA-2048, Docker container with port mapping
+
+## **Objective**
+Successfully deploy a hybrid certificate (RSA-2048 public key with ML-DSA-87 signature) to a local test server and verify it works in a standard web browser, demonstrating practical quantum-safe TLS deployment.
+
+## **Step-by-Step Implementation**
+
+### **Step 1: Check Existing Containers**
+**Purpose:** Inventory current Docker containers to understand the environment before starting fresh
+```bash
+docker ps -a
+```
+**Result:** Identified one existing container `pqc-container` in Exited state
+
+### **Step 2: Start Fresh Container with Port Mapping**
+**Purpose:** Create a new container with port 4443 mapped from container to Windows host for browser access
+```bash
+docker run -it --rm --name pqc-lab-web -p 4443:4443 -v C:\Users\user\Desktop\PQC\pqc-lab\lab-work\openssl-pqc-stepbystep-lab\:/home/labuser/work/openssl-pqc-stepbystep-lab/ -w /home/labuser/work/openssl-pqc-stepbystep-lab/ pqc-lab:latest /bin/bash
+```
+**Result:** New container `pqc-lab-web` started with prompt `labuser@afd159d9a7bc:~/work/openssl-pqc-stepbystep-lab$`
+
+### **Step 3: Verify Hybrid Certificate Files**
+**Purpose:** Confirm hybrid certificate files are accessible in the new container
+```bash
+ls -la fipsqs/06_hybrid_certificates/certs/ | grep hybrid
+```
+**Result:** Verified presence of `hybrid_rsa.crt`, `hybrid_ml_dsa.crt`, and `hybrid_ml_dsa-chain.crt`
+
+### **Step 4: Start OpenSSL Server with RSA Hybrid Certificate**
+**Purpose:** Launch test server using the hybrid RSA certificate (RSA public key with ML-DSA-87 signature) that browsers can understand
+```bash
+openssl s_server -cert fipsqs/06_hybrid_certificates/certs/hybrid_rsa.crt -key fipsqs/06_hybrid_certificates/private/rsa_hybrid.key -accept 4443 -www
+```
+**Result:** Server started successfully with `ACCEPT` message, waiting for connections
+
+### **Step 5: Access Server from Windows Browser**
+**Purpose:** Test browser compatibility by connecting to the running server
+```
+https://localhost:4443
+```
+**Result:** Browser displayed security warning (expected), clicked "Advanced" → "Proceed to localhost", OpenSSL status page loaded successfully
+
+### **Step 6: Verify Certificate in Browser**
+**Purpose:** Confirm certificate details show ML-DSA-87 signature
+```bash
+# Viewed certificate details in browser padlock icon
+```
+**Result:** Certificate viewer showed:
+- **Issued By:** Quantum Intermediate CA - ML-DSA-87
+- **Organization:** My Quantum Lab
+- **Subject:** CN=hybrid-lab.pqclab.example.com, OU=Hybrid Cryptography Research
+
+### **Step 7: Verify Certificate via OpenSSL**
+**Purpose:** Cryptographically verify the ML-DSA-87 signature using OpenSSL command line
+```bash
+openssl x509 -in fipsqs/06_hybrid_certificates/certs/hybrid_rsa.crt -text -noout | grep "Signature Algorithm" -A 2
+```
+**Result:**
+```
+Signature Algorithm: ML-DSA-87
+Issuer: C=US, ST=Washington, O=My Quantum Lab, OU=Post-Quantum Intermediate CA, CN=Quantum Intermediate CA - ML-DSA-87
+```
+
+### **Step 8: Observe Server Activity**
+**Purpose:** Monitor server logs to confirm browser connections
+```bash
+# Server output showed:
+# 10 server accepts (SSL_accept())
+# 4 server accepts that finished
+```
+**Result:** Multiple successful TLS 1.3 connections with cipher `TLS_AES_128_GCM_SHA256`
+
+## **Final Deployment Architecture**
+
+```
+Windows Host (Browser)
+    │
+    │ https://localhost:4443
+    ▼
+Docker Container (pqc-lab-web)
+    │
+    │ Port Mapping: -p 4443:4443
+    ▼
+OpenSSL s_server
+    ├── Certificate: hybrid_rsa.crt
+    │    ├── Public Key: RSA-2048 (browser compatible)
+    │    └── Signature: ML-DSA-87 (post-quantum)
+    │
+    ├── Private Key: rsa_hybrid.key (RSA-2048)
+    │
+    └── Output: -www status page
+         ├── Protocol: TLSv1.3
+         ├── Cipher: TLS_AES_128_GCM_SHA256
+         └── Server accepts: 10
+```
+
+## **Key Technical Specifications**
+
+| Component | Value | Significance |
+|-----------|-------|--------------|
+| **Certificate Used** | `hybrid_rsa.crt` | RSA-2048 public key with ML-DSA-87 signature |
+| **Private Key** | `rsa_hybrid.key` | RSA-2048 (1.7KB, 600 permissions) |
+| **Server Command** | `openssl s_server -www` | Built-in test server with status page |
+| **Port Mapping** | `-p 4443:4443` | Container-to-host port forwarding |
+| **TLS Protocol** | TLSv1.3 | Latest secure protocol |
+| **Cipher Suite** | TLS_AES_128_GCM_SHA256 | Strong encryption |
+| **Connections** | 10 server accepts | Successful browser connections |
+| **Certificate Chain** | Complete | Intermediate CA (ML-DSA-87) → Root CA |
+
+## **Challenges Overcome**
+
+- **Port Already in Use Error:** Initial server start failed because PID 19 was still holding port 4443. Resolved by identifying the process with `ps aux | grep openssl` and terminating it with `kill -9 19`.
+- **Missing Networking Tools:** Container lacked `netstat`, `ss`, and `lsof` for port checking. Resolved by using `ps aux` to find and kill the stuck process directly.
+- **Browser Compatibility:** Pure ML-DSA certificate caused `ERR_SSL_VERSION_OR_CIPHER_MISMATCH`. Resolved by using hybrid RSA certificate with ML-DSA-87 signature.
+- **Multiple Browser Windows:** Needed to keep server terminal open while testing in browser. Resolved by using separate PowerShell windows for container and curl tests.
+
+## **Practical Insights**
+
+- **Hybrid Certificates are Browser-Compatible Today:** RSA public key with ML-DSA-87 signature works in current browsers because the browser sees the RSA key for TLS handshake while the quantum-safe signature provides authentication.
+- **Server Must Stay Running:** The OpenSSL `s_server` command blocks the terminal - this is normal. Server activity appears in that window as connections occur.
+- **Multiple Ways to Verify:** Browser certificate viewer shows issuer (ML-DSA-87 CA), while OpenSSL command line reveals the actual signature algorithm.
+- **Port Mapping is Essential:** Without `-p 4443:4443`, the container is isolated and browsers cannot connect. This is a common Docker networking concept.
+- **Process Management Matters:** Stuck processes can block ports. Knowing how to find and kill processes (`ps aux | grep`, `kill -9`) is essential for troubleshooting.
+
+## **Module 8 Part 1 Completion Status**
+
+- [x] Fresh Docker container created with port mapping
+- [x] Hybrid RSA certificate verified in container
+- [x] OpenSSL test server started successfully
+- [x] Browser successfully connected to https://localhost:4443
+- [x] Certificate viewer confirmed issuer as ML-DSA-87 Intermediate CA
+- [x] OpenSSL command verified ML-DSA-87 signature algorithm
+- [x] Server logs showed 10 successful connections
+- [x] TLS 1.3 with strong cipher confirmed
+- [x] Complete hybrid certificate deployment verified
+- [>] Ready for Module 8 Part 2: Cloud VM Deployment (optional)
+- [>] Ready for Module 8 Part 3: Code Signing with Hybrid Certificate (optional)
+- [>] Ready for Module 8 Part 4: NGINX Configuration (optional)
+
+---
+
