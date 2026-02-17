@@ -3042,3 +3042,310 @@ OpenSSL s_server
 
 ---
 
+## **Module 8 Part 2: Cloud VM Deployment with Hybrid Certificate**
+**Date:** February 17, 2026  
+**Project:** Deploying hybrid RSA-2048 + ML-DSA-87 certificate to GitHub Codespaces for browser verification and cloud access  
+**Technology:** OpenSSL 3.0.18, ML-DSA-87 algorithm, RSA-2048, OQS Provider, Docker (openquantumsafe/oqs-ossl3), GitHub Codespaces  
+
+## **Objective**
+Successfully deploy a hybrid certificate (RSA-2048 public key with ML-DSA-87 signature) to a cloud-based TLS server running in GitHub Codespaces, signed by the ML-DSA-87 Intermediate CA from Module 3, demonstrating practical quantum-safe TLS deployment in a cloud environment. After creation, the certificate files are organized into the repository’s `deployments/cloud-vm-20260217/` folder with clear `cloudvm-` prefixes for future reference and deployment.
+
+## **Step-by-Step Implementation**
+
+### **Step 1: Environment Diagnosis**
+**Purpose:** Understand exactly what providers and tools are available before starting  
+```bash
+openssl version -d
+openssl list -providers
+find / -name "oqsprovider.so" 2>/dev/null
+cat $(openssl version -d | grep -oP '(?<=OPENSSLDIR: ").*(?=")')/openssl.cnf
+```
+**Result:**  
+- OpenSSL 3.0.18 installed via conda at `/opt/conda/ssl`  
+- Only the `default` provider active — OQS provider not loaded  
+- Two copies of `oqsprovider.so` found:  
+  - `/usr/lib/x86_64-linux-gnu/ossl-modules/oqsprovider.so` (system)  
+  - `/home/codespace/oqs-provider/build/lib/oqsprovider.so` (home-built)  
+- Root cause in `openssl.cnf`: `activate = 1` commented out in `[default_sect]`
+
+### **Step 2: Fix Provider Configuration**
+**Purpose:** Create a working OpenSSL config that loads both the default and OQS providers simultaneously  
+
+**File:** `~/pqc-openssl.cnf`  
+```ini
+openssl_conf = openssl_init
+
+[openssl_init]
+providers = provider_sect
+
+[provider_sect]
+default = default_sect
+oqsprovider = oqs_sect
+
+[default_sect]
+activate = 1
+
+[oqs_sect]
+module = /usr/lib/x86_64-linux-gnu/ossl-modules/oqsprovider.so
+activate = 1
+
+[req]
+default_bits = 2048
+default_md = sha256
+distinguished_name = req_distinguished_name
+prompt = no
+
+[req_distinguished_name]
+C = US
+O = PQC Lab
+CN = njinhash.cloud-ip.cc
+```
+
+**Verification command:**  
+```bash
+OPENSSL_CONF=~/pqc-openssl.cnf openssl list -providers
+```
+**Result:** Both `default` and `oqsprovider` listed as active.
+
+### **Step 3: Generate RSA Key and CSR for Cloud VM**
+**Purpose:** Create the RSA private key and Certificate Signing Request for the hybrid certificate, using the domain `njinhash.cloud-ip.cc`  
+```bash
+# RSA key (2048-bit) already existed from earlier work (originally named rsa.key)
+# We'll use it as the basis for the cloud VM certificate.
+
+# Create CSR with both providers active
+OPENSSL_CONF=~/pqc-openssl.cnf openssl req \
+  -new \
+  -key fipsqs/06_hybrid_certificates/hybrid-final/rsa.key \
+  -out fipsqs/06_hybrid_certificates/hybrid-final/rsa.csr \
+  -subj "/CN=njinhash.cloud-ip.cc/O=PQC Lab/C=US"
+```
+**Result:** CSR created as `rsa.csr` in the temporary `hybrid-final` folder.
+
+### **Step 4: Diagnose CA Key Problem**
+**Purpose:** Investigate why the ML-DSA-87 Intermediate CA key from Module 3 couldn't be loaded  
+
+**Error received:**  
+```
+error:1608010C:STORE routines:ossl_store_handle_load_result:unsupported
+```
+
+**Forensic command used:**  
+```bash
+openssl asn1parse \
+  -in fipsqs/03_fips_quantum_ca_intermediate/intermediate/private/intermediate_ca.key \
+  -inform PEM | head -5
+```
+**Result:**  
+```
+OBJECT  :2.16.840.1.101.3.4.3.19
+```
+- OID `2.16.840.1.101.3.4.3.19` = ML-DSA-87 per **NIST FIPS 204 final standard**  
+- The installed `oqs-provider 0.12.0-dev` uses older draft OIDs — version mismatch.
+
+### **Step 5: Attempt Provider Rebuild**
+**Purpose:** Rebuild oqs-provider from latest source targeting the correct OpenSSL installation  
+```bash
+cd /home/codespace/oqs-provider
+rm -rf build && mkdir build && cd build
+
+cmake .. \
+  -DOPENSSL_ROOT_DIR=/opt/conda \
+  -DOPENSSL_LIBRARIES=/opt/conda/lib \
+  -DOPENSSL_INCLUDE_DIR=/opt/conda/include \
+  -GNinja
+
+ninja -j$(nproc)
+```
+**Result:** Build succeeded, but provider still could not read the key — FIPS 204 final OIDs not registered in this codebase regardless of build flags. Latest available tag was `0.11.0-rc1`, insufficient for FIPS 204 final OID support.
+
+### **Step 6: Deploy Docker Workaround**
+**Purpose:** Use the official OQS Docker image which ships full FIPS 204 support baked in  
+```bash
+docker pull openquantumsafe/oqs-ossl3
+
+# --network host makes container ports appear on Codespace localhost
+# Use sh not bash — Alpine Linux image has no bash by default
+docker run -it --rm \
+  -v /workspaces/pqc-lab:/lab \
+  --network host \
+  openquantumsafe/oqs-ossl3 sh
+```
+**Result:** Container running. Immediate test inside container:  
+```sh
+openssl pkey \
+  -in /lab/fipsqs/03_fips_quantum_ca_intermediate/intermediate/private/intermediate_ca.key \
+  -noout -text | head -3
+```
+```
+ML-DSA-87 Private-Key:
+seed:
+    dd:f8:76:f0:c8:84:c0:c3...
+```
+CA key readable — FIPS 204 OIDs fully supported in this image.
+
+### **Step 7: Sign CSR with ML-DSA-87 CA**
+**Purpose:** Use the Intermediate CA to sign the RSA CSR, producing the hybrid certificate  
+```bash
+openssl x509 -req \
+  -in /lab/fipsqs/06_hybrid_certificates/hybrid-final/rsa.csr \
+  -CA /lab/fipsqs/03_fips_quantum_ca_intermediate/intermediate/certs/intermediate_ca.crt \
+  -CAkey /lab/fipsqs/03_fips_quantum_ca_intermediate/intermediate/private/intermediate_ca.key \
+  -CAcreateserial \
+  -out /lab/fipsqs/06_hybrid_certificates/hybrid-final/hybrid.crt \
+  -days 365 \
+  -sha256
+```
+**Result:**  
+```
+Certificate request self-signature ok
+subject=C=US, O=PQC Lab, CN=njinhash.cloud-ip.cc
+```
+
+### **Step 8: Build Certificate Chain**
+**Purpose:** Create chain file containing both the new hybrid certificate and the Intermediate CA  
+```bash
+cat /lab/fipsqs/06_hybrid_certificates/hybrid-final/hybrid.crt \
+    /lab/fipsqs/03_fips_quantum_ca_intermediate/intermediate/certs/intermediate_ca.crt \
+    > /lab/fipsqs/06_hybrid_certificates/hybrid-final/chain.crt
+```
+**Result:** `chain.crt` created.
+
+### **Step 9: Start TLS Server Inside Docker**
+**Purpose:** Launch the OpenSSL test server using the hybrid certificate and RSA key  
+```bash
+openssl s_server \
+  -cert /lab/fipsqs/06_hybrid_certificates/hybrid-final/chain.crt \
+  -key /lab/fipsqs/06_hybrid_certificates/hybrid-final/rsa.key \
+  -port 4433 \
+  -HTTP
+```
+**Result:** Server started with `ACCEPT` message, waiting for connections.
+
+### **Step 10: Verify Certificate Being Served**
+**Purpose:** Confirm the hybrid certificate is correctly served over a live TLS connection  
+```bash
+openssl s_client -connect localhost:4433 -showcerts 2>&1 | head -20
+```
+**Result:**  
+```
+Certificate chain
+ 0 s:C=US, O=PQC Lab, CN=njinhash.cloud-ip.cc
+   i:C=US, ST=Washington, O=My Quantum Lab, CN=Quantum Intermediate CA - ML-DSA-87
+   a:PKEY: RSA, 2048 (bit); sigalg: ML-DSA-87
+   v:NotBefore: Feb 17 04:23:13 2026 GMT; NotAfter: Feb 17 04:23:13 2027 GMT
+```
+Hybrid certificate confirmed — RSA 2048-bit key with ML-DSA-87 signature being served.
+
+### **Step 11: Organize Files into Repository Structure**
+**Purpose:** Move the created certificate files into the dedicated `deployments/` folder with clear naming for future reference.  
+```bash
+# On local Windows machine after pulling from GitHub
+cd C:\Users\user\Desktop\PQC\pqc-lab\lab-work\openssl-pqc-stepbystep-lab
+mkdir -p deployments\cloud-vm-20260217\certificates
+
+# Move and rename files
+mv fipsqs\06_hybrid_certificates\hybrid-final\rsa.key deployments\cloud-vm-20260217\certificates\cloudvm-rsa.key
+mv fipsqs\06_hybrid_certificates\hybrid-final\rsa.csr deployments\cloud-vm-20260217\certificates\cloudvm-rsa.csr
+mv fipsqs\06_hybrid_certificates\hybrid-final\hybrid.crt deployments\cloud-vm-20260217\certificates\cloudvm-hybrid.crt
+mv fipsqs\06_hybrid_certificates\hybrid-final\chain.crt deployments\cloud-vm-20260217\certificates\cloudvm-chain.crt
+
+# Remove empty temporary folder
+rmdir fipsqs\06_hybrid_certificates\hybrid-final
+
+# Create a README for the deployment
+notepad deployments\cloud-vm-20260217\README.md
+```
+**Result:** All cloud‑VM files are now in `deployments/cloud-vm-20260217/certificates/` with the `cloudvm-` prefix, and a README documents the deployment.
+
+## **Final File Structure Created**
+
+```
+deployments/cloud-vm-20260217/
+├── certificates/
+│   ├── cloudvm-rsa.key      (RSA-2048 private key, gitignored)
+│   ├── cloudvm-rsa.csr      (Certificate Signing Request)
+│   ├── cloudvm-hybrid.crt   (Signed hybrid certificate)
+│   └── cloudvm-chain.crt    (Full chain: hybrid.crt + intermediate_ca.crt)
+└── README.md                (Deployment instructions and context)
+```
+
+Additionally, the custom OpenSSL configuration remains in the user's home directory:  
+`~/pqc-openssl.cnf` – used for future PQC operations.
+
+## **Certificate Chain Architecture**
+
+```
+GitHub Codespaces (cloud environment)
+    │
+    │ port 4433
+    ▼
+Docker Container (openquantumsafe/oqs-ossl3)
+    │ --network host
+    ▼
+OpenSSL s_server
+    ├── Certificate: cloudvm-chain.crt
+    │    ├── cloudvm-hybrid.crt
+    │    │    ├── Public Key: RSA-2048 (browser compatible)
+    │    │    └── Signature: ML-DSA-87 (NIST FIPS 204 final)
+    │    └── intermediate_ca.crt (Quantum Intermediate CA - ML-DSA-87)
+    │
+    ├── Private Key: cloudvm-rsa.key
+    │
+    └── Verified via s_client:
+         ├── sigalg: ML-DSA-87
+         ├── PKEY: RSA, 2048 (bit)
+         └── Issuer: Quantum Intermediate CA - ML-DSA-87
+```
+
+## **Key Technical Specifications**
+
+| Component | Value | Significance |
+|-----------|-------|--------------|
+| **Certificate Used** | `cloudvm-hybrid.crt` | RSA-2048 public key with ML-DSA-87 signature |
+| **Private Key** | `cloudvm-rsa.key` | RSA-2048 (1704 bytes, gitignored) |
+| **Signing CA** | `intermediate_ca.key` | ML-DSA-87, OID 2.16.840.1.101.3.4.3.19 |
+| **OID Standard** | NIST FIPS 204 final | Permanent standardized OID |
+| **Provider Solution** | `openquantumsafe/oqs-ossl3` | Docker image with FIPS 204 support |
+| **Server Port** | 4433 | Forwarded via `--network host` |
+| **Validity Period** | 365 days | Feb 17 2026 → Feb 17 2027 |
+| **Chain Depth** | 2 | Server cert → Intermediate CA |
+
+## **Challenges Overcome**
+
+- **Default Provider Dropped When Loading OQS:** Loading `-provider oqsprovider` alone caused OpenSSL to drop the default provider entirely, breaking file I/O. Root cause: `activate = 1` was commented out in `openssl.cnf`. Resolved by creating `~/pqc-openssl.cnf` with both providers explicitly activated.
+- **CA Key OID Mismatch:** Module 3 Intermediate CA key used NIST FIPS 204 final OIDs (`2.16.840.1.101.3.4.3.19`). The installed `oqs-provider 0.12.0-dev` only knows older draft OIDs. Used `openssl asn1parse` to identify the exact OID, then resolved by switching to the `openquantumsafe/oqs-ossl3` Docker image which supports FIPS 204 final OIDs.
+- **Provider Rebuild Didn't Fix It:** Rebuilt `oqs-provider` from latest `main` branch targeting conda's OpenSSL — build succeeded but key still unreadable. The FIPS 204 final OIDs are not registered in the codebase regardless of build flags. Docker was the correct solution.
+- **Docker Container Has No bash:** The `openquantumsafe/oqs-ossl3` image is Alpine-based and does not include bash. Resolved by using `sh` as the container entrypoint.
+- **s_server Rejected Cert on Host:** Running `openssl s_server` directly on the Codespace host produced `ca md too weak` — the host OpenSSL can't verify ML-DSA-87 signatures and rejects the cert. Resolved by running the server inside the Docker container using `--network host` to share the Codespace network stack.
+- **Key Share Mismatch with External Clients:** `curl` and Codespace's `openssl s_client` couldn't negotiate a key exchange with the OQS server. Resolved by testing with `openssl s_client` from inside the same OQS-aware Docker container.
+- **File Organization for Clarity:** After successful deployment, the certificate files were moved from a temporary location (`hybrid-final`) to a permanent, well‑named folder (`deployments/cloud-vm-20260217/certificates/`) with a `cloudvm-` prefix, making it easy to identify their purpose and deployment date.
+
+## **Practical Insights**
+
+- **OpenSSL 3.x Provider Architecture:** The default provider handles file I/O and standard algorithms. OQS provider only adds post-quantum algorithms. Explicitly loading one provider without the other drops everything not listed — always load both with `activate = 1` in each provider section.
+- **OID Forensics with asn1parse:** When a key fails to load with `unsupported`, `openssl asn1parse -in keyfile -inform PEM` decodes the binary structure and reveals the exact OID — allowing diagnosis of the algorithm and standard version used to create it, even if no provider can load the key.
+- **FIPS 204 Final vs Draft OIDs:** NIST finalized ML-DSA (FIPS 204) in 2024 with permanent OIDs. Keys created with final OIDs are incompatible with providers that only know draft OIDs. This is an expected compatibility break during the standardization period.
+- **Docker as a Compatibility Layer:** When the host toolchain is too old for a cryptographic operation, Docker provides a clean solution — mount files as a volume, perform the incompatible operation inside a container with the right version, and the output persists on the host after the container exits.
+- **Hybrid Certificates Work in the Cloud Too:** The same hybrid design from Module 8 Part 1 (RSA public key + ML-DSA-87 signature) works in cloud environments. RSA handles the TLS handshake for compatibility while ML-DSA-87 provides quantum-resistant authentication.
+- **--network host is Essential for Codespaces:** Without `--network host`, Docker uses bridge networking and the container's ports are not accessible from the Codespace host's localhost. `--network host` makes the container share the host's network stack directly.
+- **Repository Organization Matters:** Moving deployment‑specific files into a `deployments/` folder with date‑stamped subfolders and clear filenames keeps the repository tidy and makes it easy to reuse or reference the certificates later.
+
+## **Module 8 Part 2 Completion Status**
+
+- [x] Codespace environment diagnosed — OpenSSL 3.0.18 via conda
+- [x] Provider configuration fixed — both default and OQS providers active
+- [x] RSA key and CSR created for `njinhash.cloud-ip.cc`
+- [x] CA key OID identified via asn1parse — NIST FIPS 204 final (2.16.840.1.101.3.4.3.19)
+- [x] oqs-provider rebuild attempted — confirmed FIPS 204 OIDs not in codebase
+- [x] `openquantumsafe/oqs-ossl3` Docker image pulled and verified
+- [x] ML-DSA-87 CA key confirmed readable inside Docker container
+- [x] CSR signed with ML-DSA-87 Intermediate CA — `hybrid.crt` created
+- [x] Certificate chain built — `chain.crt` (hybrid.crt + intermediate_ca.crt)
+- [x] OpenSSL `s_server` started in Docker container on port 4433
+- [x] `s_client` verified: RSA-2048 key, ML-DSA-87 signature, correct issuer
+- [x] Files moved and renamed to `deployments/cloud-vm-20260217/certificates/` with `cloudvm-` prefix
+- [x] README added to deployment folder
+- [x] All steps documented with commands and results
+- [>] Ready for Module 8 Part 3: Code Signing with Hybrid Certificate (optional)
+- [>] Ready for Module 8 Part 4: NGINX Configuration (optional)
