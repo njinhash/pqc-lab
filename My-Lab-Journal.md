@@ -3349,3 +3349,369 @@ OpenSSL s_server
 - [x] All steps documented with commands and results
 - [>] Ready for Module 8 Part 3: Code Signing with Hybrid Certificate (optional)
 - [>] Ready for Module 8 Part 4: NGINX Configuration (optional)
+
+## **Module 8 Part 3: Cloud VM Deployment – Uberspace**
+**Date:** February 18, 2026
+**Project:** Deploying ML-DSA-87 signed hybrid certificates to a production Uberspace server with public domain njinhash.cloud-ip.cc
+**Technology:** OpenSSL 3.3.1, liboqs, oqs-provider, ML-DSA-87 algorithm, Uberspace 7 hosting
+
+## **Objective**
+Deploy the cloudvm hybrid certificates (RSA-2048 + ML-DSA-87) to a live Uberspace server, making the PQC-enabled site accessible at `https://njinhash.cloud-ip.cc` and verifying the ML-DSA-87 signature works in a real-world hosting environment.
+
+## **Step-by-Step Implementation**
+
+### **Step 1: Establish SSH Connection to Uberspace**
+**Purpose:** Access the Uberspace server for deployment operations
+```bash
+ssh njinhash@klemola.uberspace.de
+```
+**Result:** Successfully connected with welcome message from Uberspace 7.
+
+### **Step 2: Allocate Port for OpenSSL Server**
+**Purpose:** Request a public-facing port for the PQC server to listen on
+```bash
+uberspace port add
+uberspace port list
+```
+**Result:** Port `50920` allocated and confirmed via port list command.
+
+### **Step 3: Create Project Directory Structure**
+**Purpose:** Establish organized workspace for PQC lab files on Uberspace
+```bash
+mkdir -p ~/pqc-lab/certificates
+cd ~/pqc-lab
+```
+**Result:** Created `~/pqc-lab/` with `certificates/` subdirectory.
+
+### **Step 4: Upload CloudVM Certificates to Uberspace**
+**Purpose:** Transfer hybrid certificate files from local Windows machine to Uberspace
+```powershell
+# From local PowerShell
+cd C:\Users\user\Desktop\PQC\pqc-lab\lab-work\openssl-pqc-stepbystep-lab\deployments\cloud-vm-20260217\certificates\
+scp * njinhash@klemola.uberspace.de:~/pqc-lab/certificates/
+```
+**Result:** All cloudvm certificate files successfully transferred and verified:
+```
+cloudvm-chain.crt  cloudvm-hybrid.crt  cloudvm-rsa.csr  cloudvm-rsa.key
+```
+
+### **Step 5: Install CMake Locally**
+**Purpose:** Download pre-compiled CMake for building liboqs (no root access on Uberspace)
+```bash
+cd ~/pqc-lab
+wget https://github.com/Kitware/CMake/releases/download/v3.28.1/cmake-3.28.1-linux-x86_64.tar.gz
+tar -xzf cmake-3.28.1-linux-x86_64.tar.gz
+mv cmake-3.28.1-linux-x86_64 cmake
+rm cmake-3.28.1-linux-x86_64.tar.gz
+~/pqc-lab/cmake/bin/cmake --version
+```
+**Result:** CMake 3.28.1 installed locally and verified.
+
+### **Step 6: Build liboqs from Source**
+**Purpose:** Compile the OQS library with post-quantum algorithms (including ML-DSA-87)
+```bash
+cd ~/pqc-lab
+git clone --depth 1 --branch main https://github.com/open-quantum-safe/liboqs.git
+cd liboqs && mkdir build && cd build
+~/pqc-lab/cmake/bin/cmake -DCMAKE_INSTALL_PREFIX=~/pqc-lab/oqs-install -DOQS_USE_OPENSSL=OFF ..
+make -j2 && make install
+```
+**Result:** liboqs successfully compiled and installed to `~/pqc-lab/oqs-install/`.
+
+### **Step 7: Build OpenSSL 3.3.1 from Source**
+**Purpose:** Create a stock OpenSSL 3.3.1 installation for use with oqs-provider
+```bash
+cd ~/pqc-lab
+wget https://www.openssl.org/source/openssl-3.3.1.tar.gz
+tar xzf openssl-3.3.1.tar.gz
+cd openssl-3.3.1
+./config --prefix=/home/njinhash/pqc-lab/openssl3 --openssldir=/home/njinhash/pqc-lab/openssl3/ssl
+make -j2 && make install
+```
+**Result:** OpenSSL 3.3.1 successfully installed to `~/pqc-lab/openssl3/`.
+
+### **Step 8: Build oqs-provider**
+**Purpose:** Compile the provider module that adds PQC algorithms to OpenSSL 3
+```bash
+cd ~/pqc-lab
+git clone --depth 1 https://github.com/open-quantum-safe/oqs-provider.git
+cd oqs-provider && mkdir build && cd build
+~/pqc-lab/cmake/bin/cmake -DOPENSSL_ROOT_DIR=/home/njinhash/pqc-lab/openssl3 -Dliboqs_DIR=/home/njinhash/pqc-lab/oqs-install/lib64/cmake/liboqs ..
+make -j2 && make install
+```
+**Result:** oqs-provider installed to `~/pqc-lab/openssl3/lib64/ossl-modules/oqsprovider.so`.
+
+### **Step 9: Configure OpenSSL to Load oqs-provider**
+**Purpose:** Create configuration file that automatically loads both default and oqs providers
+```bash
+mkdir -p ~/pqc-lab/openssl3/ssl
+cat > ~/pqc-lab/openssl3/ssl/openssl.cnf << 'EOF'
+openssl_conf = openssl_init
+
+[openssl_init]
+providers = provider_section
+
+[provider_section]
+oqsprovider = oqsprovider_section
+default = default_section
+
+[oqsprovider_section]
+module = /home/njinhash/pqc-lab/openssl3/lib64/ossl-modules/oqsprovider.so
+activate = 1
+
+[default_section]
+activate = 1
+EOF
+```
+**Result:** Configuration created; verification shows both providers active:
+```bash
+export LD_LIBRARY_PATH=/home/njinhash/pqc-lab/openssl3/lib64:$LD_LIBRARY_PATH
+export OPENSSL_CONF=~/pqc-lab/openssl3/ssl/openssl.cnf
+~/pqc-lab/openssl3/bin/openssl list -providers
+```
+Output:
+```
+Providers:
+  default
+  oqsprovider
+```
+
+### **Step 10: Verify ML-DSA-87 Algorithm Support**
+**Purpose:** Confirm the oqs-provider makes ML-DSA-87 available
+```bash
+~/pqc-lab/openssl3/bin/openssl list -signature-algorithms | grep -i dsa
+```
+**Result:** ML-DSA algorithms confirmed:
+```
+mldsa44 @ oqsprovider
+p256_mldsa44 @ oqsprovider
+rsa3072_mldsa44 @ oqsprovider
+mldsa65 @ oqsprovider
+p384_mldsa65 @ oqsprovider
+mldsa87 @ oqsprovider
+p521_mldsa87 @ oqsprovider
+```
+
+### **Step 11: Test CloudVM Certificate with New OpenSSL**
+**Purpose:** Verify the cloudvm hybrid certificate can be read and its ML-DSA-87 signature recognized
+```bash
+~/pqc-lab/openssl3/bin/openssl x509 -in ~/pqc-lab/certificates/cloudvm-hybrid.crt -text -noout | grep -A 2 "Signature Algorithm"
+```
+**Result:** ML-DSA-87 signature confirmed:
+```
+Signature Algorithm: ML-DSA-87
+Issuer: C=US, ST=Washington, O=My Quantum Lab, OU=Post-Quantum Intermediate CA, CN=Quantum Intermediate CA - ML-DSA-87
+```
+
+### **Step 12: Start OpenSSL Server with CloudVM Certificate**
+**Purpose:** Launch the PQC-enabled server on allocated port 50920
+```bash
+export LD_LIBRARY_PATH=/home/njinhash/pqc-lab/openssl3/lib64:$LD_LIBRARY_PATH
+export OPENSSL_CONF=~/pqc-lab/openssl3/ssl/openssl.cnf
+cd ~/pqc-lab/certificates
+~/pqc-lab/openssl3/bin/openssl s_server -cert cloudvm-hybrid.crt -key cloudvm-rsa.key -cert_chain cloudvm-chain.crt -accept 50920 -www -tls1_3
+```
+**Result:** Server started with `ACCEPT` message, waiting for connections.
+
+### **Step 13: Test Server Locally with s_client**
+**Purpose:** Verify the server is responding correctly and serving the ML-DSA-87 certificate
+```bash
+# In a new SSH session
+export LD_LIBRARY_PATH=/home/njinhash/pqc-lab/openssl3/lib64:$LD_LIBRARY_PATH
+export OPENSSL_CONF=~/pqc-lab/openssl3/ssl/openssl.cnf
+~/pqc-lab/openssl3/bin/openssl s_client -connect localhost:50920 -servername njinhash.cloud-ip.cc
+```
+**Result:** Certificate chain confirmed with ML-DSA-87 signature and hybrid key exchange:
+```
+Certificate chain
+ 0 s:C=US, O=PQC Lab, CN=njinhash.cloud-ip.cc
+   i:C=US, ST=Washington, O=My Quantum Lab, CN=Quantum Intermediate CA - ML-DSA-87
+   a:PKEY: RSA, 2048 (bit); sigalg: ML-DSA-87
+...
+Negotiated TLS1.3 group: X25519MLKEM768
+```
+
+### **Step 14: Configure Uberspace Web Backend**
+**Purpose:** Set up Uberspace's nginx to forward HTTPS traffic to the OpenSSL server
+```bash
+uberspace web backend set / --http --port 50920
+uberspace web backend list
+```
+**Result:** Backend configured and verified as OK:
+```
+/ http:50920 => OK, listening: PID 24612, /home/njinhash/pqc-lab/openssl3/bin/openssl s_server -cert cloudvm-hybrid.crt ...
+```
+
+### **Step 15: Add Domain to Uberspace**
+**Purpose:** Register the custom domain with Uberspace's web server
+```bash
+uberspace web domain add njinhash.cloud-ip.cc
+uberspace web domain list
+```
+**Result:** Domain added and confirmed in domain list:
+```
+njinhash.cloud-ip.cc
+njinhash.uber.space
+```
+
+### **Step 16: Configure DNS in ClouDNS**
+**Purpose:** Point the domain to Uberspace's IP addresses
+- Added A record: `185.26.156.87`
+- Added AAAA record: `2a00:d0c0:200:0:b9:1a:9c:56`
+**Result:** DNS propagation confirmed via ping and nslookup:
+```powershell
+ping njinhash.cloud-ip.cc
+nslookup njinhash.cloud-ip.cc
+```
+
+### **Step 17: Test Python HTTP Server (Protocol Diagnosis)**
+**Purpose:** Determine if 502 error is due to protocol mismatch between nginx (HTTP) and OpenSSL (TLS)
+```bash
+# Kill OpenSSL server
+pkill -f "openssl s_server"
+
+# Create and start Python HTTP server on port 50920
+cd ~/pqc-lab
+cat > serve.py << 'EOF'
+#!/usr/bin/env python3
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import time
+
+class Handler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        html = f"""<html>
+<head><title>PQC Lab Demo</title></head>
+<body>
+<h1>✅ Uberspace Proxy Working!</h1>
+<p>This page is served by a plain HTTP server on port 50920.</p>
+<p>Uberspace's nginx is successfully proxying HTTPS → HTTP.</p>
+<hr>
+<p><b>Server time:</b> {{time.time()}}</p>
+</body>
+</html>"""
+        self.send_response(200)
+        self.send_header("Content-Type", "text/html")
+        self.send_header("Content-Length", str(len(html)))
+        self.end_headers()
+        self.wfile.write(html.encode('utf-8'))
+    def log_message(self, *args):
+        pass
+
+HTTPServer(("0.0.0.0", 50920), Handler).serve_forever()
+EOF
+
+python3 serve.py &
+```
+**Result:** Python server accessible at `https://njinhash.cloud-ip.cc`, confirming Uberspace proxy works.
+
+### **Step 18: Identify Platform Limitation**
+**Purpose:** Diagnose why ML-DSA-87 certificate doesn't appear in browser
+```bash
+# Check backend status with Python server
+uberspace web backend list
+```
+**Result:** 
+```
+/ http:50920 => NOT OK, wrong interface (127.0.0.1)
+```
+After fixing to `0.0.0.0`:
+```
+/ http:50920 => OK, listening: PID 6017, python3 /home/njinhash/pqc-lab/serve.py
+```
+
+Browser inspection of `https://njinhash.cloud-ip.cc` showed Let's Encrypt certificate, not ML-DSA-87. This confirmed Uberspace terminates TLS at their edge and does not support custom certificate passthrough.
+
+```
+
+```
+~/pqc-lab/
+├── certificates/     # cloudvm-* certificates only
+├── openssl3/         # PQC-enabled OpenSSL binary
+├── oqs-install/      # liboqs library
+└── cmake/            # CMake binary
+```
+
+## **Final File Structure Created**
+
+```
+~/pqc-lab/
+├── certificates/
+│   ├── cloudvm-chain.crt      # Full certificate chain (Intermediate + Root)
+│   ├── cloudvm-hybrid.crt     # Hybrid certificate (RSA-2048 + ML-DSA-87 signature)
+│   ├── cloudvm-rsa.csr        # Certificate Signing Request (archived)
+│   └── cloudvm-rsa.key        # RSA-2048 private key (600 permissions)
+├── openssl3/
+│   ├── bin/openssl             # OpenSSL 3.3.1 binary with PQC support
+│   ├── lib64/ossl-modules/oqsprovider.so  # OQS provider module
+│   └── ssl/openssl.cnf         # Configuration loading both providers
+├── oqs-install/                # liboqs library and headers
+└── cmake/                      # CMake binary (optional, can keep)
+```
+
+## **Certificate Chain Architecture**
+
+```
+Root CA (ML-DSA-87, offline, 10 years, "My Post-Quantum Root CA")
+    ↓ Signs
+Intermediate CA (ML-DSA-87, online, 5 years, "Quantum Intermediate CA - ML-DSA-87")
+    ↓ Signs (serial 1006)
+CloudVM Hybrid Certificate (njinhash.cloud-ip.cc)
+    ├── Public Key: RSA-2048 (browser compatible)
+    ├── Signature Algorithm: ML-DSA-87 (post-quantum)
+    ├── Subject: C=US, O=PQC Lab, CN=njinhash.cloud-ip.cc
+    └── Validity: Feb 17 2026 → Feb 17 2027
+
+Uberspace Proxy Architecture (platform limitation):
+Browser → https://njinhash.cloud-ip.cc:443 → Uberspace nginx (TLS termination with Let's Encrypt) → http://localhost:50920 → OpenSSL server
+```
+
+## **Key Technical Specifications**
+
+| Component | Value | Significance |
+|-----------|-------|--------------|
+| **Certificate** | `cloudvm-hybrid.crt` | RSA-2048 public key with ML-DSA-87 signature |
+| **Private Key** | `cloudvm-rsa.key` | RSA-2048 (1730 bytes, 600 permissions) |
+| **OpenSSL Version** | 3.3.1 | Built from source with oqs-provider |
+| **liboqs Version** | main branch | Latest with NIST FIPS 204 standardized names |
+| **oqs-provider** | 0.12.0-dev | Loadable module for PQC algorithms |
+| **ML-DSA-87 Support** | Verified | `mldsa87` listed in signature algorithms |
+| **Server Port** | 50920 | Allocated via `uberspace port add` |
+| **Backend Status** | OK | Uberspace nginx connected to server |
+| **Local Test** | ✅ PASS | `openssl s_client` shows ML-DSA-87 signature |
+| **Browser Test** | ⚠️ Platform Limitation | Uberspace terminates TLS at edge |
+
+## **Challenges Overcome**
+
+- **No Root Access on Shared Hosting:** Uberspace provides no `sudo` access. Resolved by compiling all software from source in user's home directory, including CMake, liboqs, OpenSSL 3.3.1, and oqs-provider.
+- **OID Version Mismatch:** Initial builds used older OpenSSL forks expecting draft algorithm names. Resolved by adopting the modern approach: stock OpenSSL 3.3.1 + oqs-provider, which supports NIST FIPS 204 final OIDs.
+- **Provider Activation:** OpenSSL wouldn't load oqs-provider alongside default provider. Resolved by creating custom `openssl.cnf` with both providers explicitly activated.
+- **Python Server Syntax Error:** Initial Python script had string/byte concatenation errors. Resolved by rewriting with clean f-string and proper encoding.
+- **Interface Binding Issue:** Python server initially bound to `127.0.0.1` only, causing Uberspace nginx to report "wrong interface". Resolved by changing to `0.0.0.0` to listen on all interfaces.
+- **Uberspace Platform Limitation:** Discovered Uberspace terminates TLS at their edge with Let's Encrypt and cannot passthrough custom certificates. This is a fundamental platform limitation, not a failure of the PQC implementation.
+
+## **Practical Insights**
+
+- **Stock OpenSSL + Provider is the Modern Approach:** The OQS-OpenSSL fork is legacy. Production PQC deployments should use stock OpenSSL 3.x with oqs-provider as a loadable module.
+- **Shared Hosting Limitations:** Uberspace and similar platforms are designed for standard websites, not custom TLS certificates with exotic algorithms. For true PQC demonstrations, a VPS with root access or local deployment is necessary.
+- **Build Everything in Userspace:** On shared hosting without root, it's possible to compile the entire PQC stack in a home directory. This includes CMake, liboqs, OpenSSL, and oqs-provider - all without sudo.
+- **DNS Propagation Takes Time:** Even after adding records in ClouDNS, DNS changes can take 5-30 minutes to propagate. Tools like `whatsmydns.net` help verify global propagation.
+- **Three-Verification Protocol:** Always verify (1) server is running with `ps aux`, (2) port is listening with `ss -tlnp`, and (3) certificate is correct with `openssl s_client`.
+- **ML-DSA-87 Signatures are Larger:** The ML-DSA-87 signature adds approximately 4KB to certificate size compared to RSA-only certificates, which may impact TLS handshake performance.
+- **Documentation Matters:** The systematic approach of documenting each step, command, and result proved invaluable for diagnosing issues and understanding the complete deployment process.
+
+## **Module 8 Part 3 Completion Status**
+
+- [x] Uberspace SSH access established and port 50920 allocated
+- [x] CloudVM certificates uploaded and verified
+- [x] Complete PQC stack built from source: CMake, liboqs, OpenSSL 3.3.1, oqs-provider
+- [x] OpenSSL configured with both default and oqs providers active
+- [x] ML-DSA-87 algorithm support verified via `openssl list`
+- [x] OpenSSL server started with cloudvm hybrid certificate
+- [x] Local `openssl s_client` test confirmed ML-DSA-87 signature and X25519MLKEM768 key exchange
+- [x] Uberspace backend configured and verified as OK
+- [x] Domain added to Uberspace and DNS configured in ClouDNS
+- [x] Python HTTP server test confirmed Uberspace proxy works
+- [x] Platform limitation identified: Uberspace terminates TLS at edge, cannot passthrough custom certificates
+- [x] Environment cleaned up, leaving only essential files
+- [x] All steps documented with commands and results
+- [>] **Ready for Module 9: Enterprise PKI with EJBCA**
