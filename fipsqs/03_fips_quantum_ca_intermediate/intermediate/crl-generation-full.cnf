@@ -1,0 +1,21 @@
+# OpenSSL configuration for ML-DSA-87 CRL generation
+openssl_conf = openssl_init
+
+[openssl_init]
+providers = provider_section
+
+[provider_section]
+default = default_sect
+oqsprovider = oqs_sect
+
+[default_sect]
+activate = 1
+
+[oqs_sect]
+activate = 1
+
+# CA configuration from your original file
+[ ca ]
+default_ca = CA_default default_ca = CA_default [ CA_default ] dir               = . certs             = $dir/certs crl_dir           = $dir/crl new_certs_dir     = $dir/newcerts database          = $dir/index.txt serial            = $dir/serial RANDFILE          = $dir/private/.rand private_key       = $dir/private/intermediate_ca.key certificate       = $dir/certs/intermediate_ca.crt crl               = $dir/crl/intermediate_ca.crl.pem crlnumber         = $dir/crlnumber crl_extensions    = crl_ext default_crl_days  = 30 default_days      = 1825  # 5 years validity for Intermediate CA policy            = intermediate_policy [ intermediate_policy ] countryName             = supplied stateOrProvinceName     = supplied organizationName        = supplied organizationalUnitName  = optional commonName              = supplied emailAddress            = optional [ req ] default_bits        = 2048  # Not used for ML-DSA-87, but required string_mask         = utf8only default_md          = sha256 distinguished_name  = req_distinguished_name req_extensions      = v3_req [ req_distinguished_name ] countryName                     = Country Name (2 letter code) countryName_default             = US countryName_min                 = 2 countryName_max                 = 2 stateOrProvinceName             = State or Province Name stateOrProvinceName_default     = Washington localityName                    = Locality Name localityName_default            = Seattle 0.organizationName              = Organization Name 0.organizationName_default      = My Quantum Lab organizationalUnitName          = Organizational Unit Name organizationalUnitName_default  = Post-Quantum Intermediate CA commonName                      = Common Name commonName_default              = Quantum Intermediate CA - ML-DSA-87 commonName_max                  = 64 emailAddress                    = Email Address emailAddress_max                = 64 [ v3_req ] basicConstraints = CA:TRUE, pathlen:0 keyUsage = keyCertSign, cRLSign subjectKeyIdentifier = hash [ v3_intermediate_ca ] subjectKeyIdentifier = hash authorityKeyIdentifier = keyid:always,issuer basicConstraints = critical, CA:TRUE, pathlen:0 keyUsage = critical, digitalSignature, keyCertSign, cRLSign [ crl_ext ] authorityKeyIdentifier = keyid:always [ ocsp ] basicConstraints = CA:FALSE subjectKeyIdentifier = hash authorityKeyIdentifier = keyid,issuer keyUsage = critical, digitalSignature extendedKeyUsage = critical, OCSPSigning unique_subject = no
+
+
